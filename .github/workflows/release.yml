@@ -17,6 +17,11 @@ on:
         required: true
         type: boolean
         default: true
+      create_release:
+        description: 'Make GitHub Release?
+        required: true
+        type: boolean
+        default: false
 
 jobs:
 
@@ -142,7 +147,6 @@ jobs:
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Linux arm64 — targets Raspberry Pi OS Trixie (Debian 13)
-  # Uses GitHub's native arm64 runner; no QEMU needed.
   # ──────────────────────────────────────────────────────────────────────────────
   build-linux-arm64:
     name: Linux arm64
@@ -200,7 +204,7 @@ jobs:
   release:
     name: Publish Release
     needs: [build-macos-arm64, build-linux-arm64]
-    if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (github.event_name == 'push' || inputs.create_release == true) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
