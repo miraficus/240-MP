@@ -16,6 +16,7 @@
 #include "modules/jellyfin/JellyfinBackend.h"
 #include "modules/ambient_mode/AmbientModeBackend.h"
 #include "modules/youtube/YouTubeBackend.h"
+#include "modules/iptv/IptvBackend.h"
 #include "player/MpvController.h"
 #include "input/InputManager.h"
 #include "input/IdleTracker.h"
@@ -84,6 +85,7 @@ int main(int argc, char *argv[]) {
     JellyfinBackend     jellyfinBackend(appRoot, dataRoot);
     AmbientModeBackend  ambientMode(dataRoot);
     YouTubeBackend      youtubeBackend(appRoot, dataRoot);
+    IptvBackend         iptvBackend(&app);
     MpvController       mpvController(appRoot, &appCore);
     InputManager        inputManager(dataRoot);
     IdleTracker         idleTracker(60);   // disabled until Main.qml applies the saved setting
@@ -102,6 +104,7 @@ int main(int argc, char *argv[]) {
     appCore.registerModule("com.240mp.jellyfin",     "jellyfinBackend",    &jellyfinBackend, ctx);
     appCore.registerModule("com.240mp.ambient_mode", "ambientModeBackend", &ambientMode, ctx);
     appCore.registerModule("com.240mp.youtube",      "youtubeBackend",     &youtubeBackend, ctx);
+    appCore.registerModule("com.240mp.iptv",         "iptvBackend",        &iptvBackend, ctx);
 
     ctx->setContextProperty("idleTracker",   &idleTracker);
     ctx->setContextProperty("appCore",       &appCore);
