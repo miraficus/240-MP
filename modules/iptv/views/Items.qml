@@ -39,23 +39,34 @@ FocusScope {
         anchors.bottomMargin: root.sh * 0.1
         model: itemsRoot.channelModel
         clip: true
+        focus: true
 
-        delegate: ItemDelegate {
+        delegate: Item {
             width: itemList.width
             height: root.sh * 0.08
-            highlighted: ListView.isCurrentItem
-            
-            text: modelData.title
 
-            background: Rectangle {
-                color: highlighted ? "#33ffffff" : "transparent"
+            Rectangle {
+                anchors.fill: parent
+                color: itemList.currentIndex === index ? "#33ffffff" : "transparent"
+                radius: 4
+            }
+
+            Text {
+                text: modelData.title
+                color: "white"
+                font.pixelSize: parent.height * 0.4
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
             }
         }
 
-        Keys.onReturnPressed: {
-            var selectedChannel = channelModel[currentIndex]
+        Keys.onReturnPressed: function(event) {
+            var selectedChannel = itemsRoot.channelModel[itemList.currentIndex]
             if (selectedChannel && selectedChannel.url) {
+                console.log("Spouštím kanál: " + selectedChannel.title + " s URL: " + selectedChannel.url)
                 mpvController.loadAndPlay(selectedChannel.url, 0, 1, 1)
+                event.accepted = true
             }
         }
     }
