@@ -18,7 +18,7 @@ on:
         type: boolean
         default: true
       create_release:
-        description: 'Make GitHub Release?
+        description: 'Make GitHub Release?'
         required: true
         type: boolean
         default: false
