@@ -6,6 +6,17 @@ on:
       - 'v*.*.*'
 
   workflow_dispatch:
+    inputs:
+      build_mac:
+        description: 'Build macOS (arm64)?'
+        required: true
+        type: boolean
+        default: true
+      build_linux:
+        description: 'Build Linux (arm64)?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
 
@@ -15,6 +26,7 @@ jobs:
   build-macos-arm64:
     name: macOS arm64
     runs-on: macos-latest
+    if: ${{ github.event_name == 'push' || inputs.build_mac == true }}
 
     steps:
       - name: Checkout
@@ -135,6 +147,7 @@ jobs:
   build-linux-arm64:
     name: Linux arm64
     runs-on: ubuntu-24.04-arm
+    if: ${{ github.event_name == 'push' || inputs.build_linux == true }}
 
     steps:
       - name: Checkout
@@ -187,6 +200,7 @@ jobs:
   release:
     name: Publish Release
     needs: [build-macos-arm64, build-linux-arm64]
+    if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -199,6 +213,8 @@ jobs:
         uses: actions/download-artifact@v4.3.0
         with:
           path: artifacts
+          pattern: '*'
+          merge-multiple: false
 
       - name: Publish
         uses: softprops/action-gh-release@v2
