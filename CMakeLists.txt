@@ -33,6 +33,7 @@ add_executable(240mp
     src/modules/jellyfin/JellyfinBackend.cpp
     src/modules/ambient_mode/AmbientModeBackend.cpp
     src/modules/youtube/YouTubeBackend.cpp
+    src/modules/iptv/IptvBackend.cpp
     src/player/MpvController.cpp
     src/input/InputManager.cpp
     src/input/IdleTracker.cpp
