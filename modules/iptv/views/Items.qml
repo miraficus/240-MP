@@ -131,11 +131,28 @@ FocusScope {
     }
 
     Component.onCompleted: {
-        var lang = appCore.get_setting(moduleRoot.moduleId, "playlist_lang")
-        console.log("QML IPTV DEBUG - Loaded language is:", lang)
+        // Log the automatic module ID provided by the framework
+        console.log("IPTV DEBUG - moduleRoot.moduleId is:", moduleRoot.moduleId)
         
-        if (!lang) lang = "ALL";
+        // Try loading the setting using the full manual ID from manifest.json
+        var lang = appCore.get_setting("com.240mp.iptv", "playlist_lang")
+        console.log("IPTV DEBUG - Loaded language via full manual ID:", lang)
+        
+        // If it returns null, try with the shortened ID (in case the framework strips the prefix)
+        if (lang === null || lang === undefined) {
+            lang = appCore.get_setting("iptv", "playlist_lang")
+            console.log("IPTV DEBUG - Loaded language via shortened ID:", lang)
+        }
 
+        // Fallback default value if everything else returns null
+        if (!lang) {
+            console.log("IPTV DEBUG - No language found in settings, falling back to: ALL")
+            lang = "ALL"
+        } else {
+            console.log("IPTV DEBUG - Successfully resolved language to pass into C++:", lang)
+        }
+        
+        // Pass the resolved language to the C++ backend
         iptvBackend.fetchChannels(lang)
         itemList.forceActiveFocus()
     }
