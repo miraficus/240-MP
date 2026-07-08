@@ -9,6 +9,17 @@
       "label": "Enable IPTV",
       "type": "toggle",
       "default": "OFF"
+    },
+    {
+      "key": "playlist_lang",
+      "label": "Playlist Language",
+      "type": "list_single",
+      "default": "ALL",
+      "options": [
+        { "id": "ALL", "label": "ALL (WORLD)" },
+        { "id": "CZ", "label": "CZ" },
+        { "id": "EN", "label": "EN" }
+      ]
     }
   ]
 }
