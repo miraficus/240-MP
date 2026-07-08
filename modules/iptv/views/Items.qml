@@ -123,6 +123,7 @@ FocusScope {
         target: iptvBackend
         function onChannelsLoaded(channels) {
             itemsRoot.channelModel = channels
+            itemList.model = channels
             var restore = navListState.currentIndex !== undefined ? navListState.currentIndex : 0
             itemList.currentIndex = Math.min(restore, Math.max(0, channels.length - 1))
             itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
