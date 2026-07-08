@@ -16,7 +16,13 @@ FocusScope {
     property var currentParams: ({})
 
     function navigateTo(viewPath, params, fromState) {
-        var resolved = Qt.resolvedUrl(viewPath)
+        var resolved = moduleRoot.Component.status === Component.Ready ? Qt.resolvedUrl(viewPath) : viewPath
+        if (typeof resolved === "string" && !resolved.startsWith("file://") && !resolved.startsWith("qrc:/")) {
+            resolved = Qt.resolvedUrl("./" + viewPath)
+        }
+
+        console.log("IPTV ROUTER - Attempting to load resolved path:", resolved)
+
         navStack.push({ source: internalLoader.source, params: currentParams, listState: fromState || {} })
         currentParams = params || {}
         internalLoader.setSource(resolved, { "navParams": params || {} })

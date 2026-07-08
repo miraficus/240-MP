@@ -141,29 +141,16 @@ FocusScope {
             console.log("IPTV DEBUG - Custom URL is:", customUrl)
             
             if (customUrl === "") {
-                // No custom URL set yet, redirect user to input screen
                 console.log("IPTV DEBUG - Redirecting to Link.qml due to empty custom URL")
                 navigateTo("Link.qml", {}, {})
                 return
             }
-            // Pass the entire URL into the backend
             iptvBackend.fetchChannels(customUrl)
         } else {
-            // Standard preset language (ALL, CZ, DE, EN)
             iptvBackend.fetchChannels(lang)
         }
         
         itemList.forceActiveFocus()
-    }
-
-    Timer {
-        id: redirectTimer
-        interval: 50
-        repeat: false
-        onTriggered: {
-            console.log("IPTV DEBUG - Triggering delayed navigateTo to Link.qml")
-            navigateTo("Link.qml", {}, {})
-        }
     }
 
     // Footer
