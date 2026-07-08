@@ -131,7 +131,9 @@ FocusScope {
     }
 
     Component.onCompleted: {
-        iptvBackend.fetchChannels()
+        var lang = appCore.get_setting(moduleRoot.moduleId, "playlist_lang") || "ALL"
+
+        iptvBackend.fetchChannels(lang)
         itemList.forceActiveFocus()
     }
 

@@ -10,7 +10,7 @@ class IptvBackend : public QObject {
 public:
     explicit IptvBackend(QObject *parent = nullptr);
 
-    Q_INVOKABLE void fetchChannels();
+    Q_INVOKABLE void fetchChannels(const QString &langCode);
 
 signals:
     void channelsLoaded(const QVariantList &channels);
@@ -21,5 +21,4 @@ private slots:
 
 private:
     QNetworkAccessManager *m_networkManager;
-    const QString m_playlistUrl = "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/cz.m3u";
 };

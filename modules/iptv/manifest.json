@@ -8,7 +8,7 @@
       "key": "enabled",
       "label": "Enable IPTV",
       "type": "toggle",
-      "default": "ON"
+      "default": "OFF"
     }
   ]
 }
