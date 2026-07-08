@@ -6,6 +6,18 @@ IptvBackend::IptvBackend(QObject *parent) : QObject(parent) {
     m_networkManager = new QNetworkAccessManager(this);
 }
 
+void IptvBackend::get_playlist_languages() {
+    QVariantList options;
+    
+    QVariantMap allOpt; allOpt["id"] = "ALL"; allOpt["label"] = "ALL (WORLD)";
+    QVariantMap czOpt;  czOpt["id"] = "CZ";  czOpt["label"] = "CZ";
+    QVariantMap enOpt;  enOpt["id"] = "EN";  enOpt["label"] = "EN";
+    
+    options << allOpt << czOpt << enOpt;
+    
+    emit dynamicOptionsReady("playlist_lang", options);
+}
+
 void IptvBackend::fetchChannels(const QString &langCode) {
     QString targetUrl = "https://iptv-org.github.io/iptv/index.m3u"; // Default ALL
 
@@ -46,17 +58,15 @@ void IptvBackend::onReplyFinished(QNetworkReply *reply) {
             } else {
                 currentTitle = "Unknown Channel";
             }
-        } 
-        else if (trimmed.startsWith('#')) {
+        } else if (trimmed.startsWith('#')) {
             continue; 
-        } 
-        else {
+        } else {
             if (!currentTitle.isEmpty()) {
                 QVariantMap channel;
                 channel["title"] = currentTitle;
                 channel["url"] = trimmed;
                 channels.append(channel);
-                currentTitle = "";
+                currentTitle = ""; 
             }
         }
     }

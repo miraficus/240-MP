@@ -14,12 +14,9 @@
       "key": "playlist_lang",
       "label": "Playlist Language",
       "type": "list_single",
-      "default": "ALL",
-      "options": [
-        { "id": "ALL", "label": "ALL (WORLD)" },
-        { "id": "CZ", "label": "CZ" },
-        { "id": "EN", "label": "EN" }
-      ]
+      "options_source": "dynamic",
+      "options_slot": "get_playlist_languages",
+      "default": "ALL"
     }
   ]
 }
