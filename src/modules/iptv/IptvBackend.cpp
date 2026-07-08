@@ -9,27 +9,33 @@ IptvBackend::IptvBackend(QObject *parent) : QObject(parent) {
 void IptvBackend::get_playlist_languages() {
     QVariantList options;
     
-    QVariantMap allOpt; allOpt["id"] = "ALL"; allOpt["label"] = "ALL (WORLD)";
-    QVariantMap czOpt;  czOpt["id"] = "CZ";  czOpt["label"] = "CZ";
-    QVariantMap enOpt;  enOpt["id"] = "EN";  enOpt["label"] = "EN";
+    QVariantMap customOpt; customOpt["id"] = "CUSTOM"; customOpt["label"] = "CUSTOM URL";
+    QVariantMap allOpt;    allOpt["id"] = "ALL";       allOpt["label"] = "ALL (WORLD)";
+    QVariantMap czOpt;     czOpt["id"] = "CZ";        czOpt["label"] = "CZ";
+    QVariantMap deOpt;     deOpt["id"] = "DE";        deOpt["label"] = "DE";
+    QVariantMap enOpt;     enOpt["id"] = "EN";        enOpt["label"] = "EN";
     
-    options << allOpt << czOpt << enOpt;
-    
+    options << customOpt << allOpt << czOpt << deOpt << enOpt;
     emit dynamicOptionsReady("playlist_lang", options);
 }
 
 void IptvBackend::fetchChannels(const QString &langCode) {
     QString cleanLang = langCode.trimmed().toUpper();
-
     QString targetUrl = "https://iptv-org.github.io/iptv/index.m3u"; // Default ALL
 
-    if (cleanLang == "CZ") {
+    if (cleanLang == "CUSTOM") {
+        if (cleanLang.startsWith("HTTP://") || cleanLang.startsWith("HTTPS://")) {
+            targetUrl = langCode;
+        }
+    } else if (cleanLang == "CZ") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/ces.m3u";
+    } else if (cleanLang == "DE") {
+        targetUrl = "https://iptv-org.github.io/iptv/languages/deu.m3u";
     } else if (cleanLang == "EN") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/eng.m3u";
     }
 
-    qDebug() << "IPTV BACKEND: Language:" << cleanLang << "Downloading from URL:" << targetUrl;
+    qDebug() << "IPTV BACKEND - Fetching from URL:" << targetUrl;
 
     QNetworkRequest request((QUrl(targetUrl)));
     request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");

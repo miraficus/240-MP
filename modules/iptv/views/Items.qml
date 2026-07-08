@@ -130,30 +130,29 @@ FocusScope {
         }
     }
 
-    Component.onCompleted: {
-        // Log the automatic module ID provided by the framework
-        console.log("IPTV DEBUG - moduleRoot.moduleId is:", moduleRoot.moduleId)
-        
-        // Try loading the setting using the full manual ID from manifest.json
+Component.onCompleted: {
         var lang = appCore.get_setting("com.240mp.iptv", "playlist_lang")
         console.log("IPTV DEBUG - Loaded language via full manual ID:", lang)
         
-        // If it returns null, try with the shortened ID (in case the framework strips the prefix)
-        if (lang === null || lang === undefined) {
-            lang = appCore.get_setting("iptv", "playlist_lang")
-            console.log("IPTV DEBUG - Loaded language via shortened ID:", lang)
-        }
-
-        // Fallback default value if everything else returns null
-        if (!lang) {
-            console.log("IPTV DEBUG - No language found in settings, falling back to: ALL")
-            lang = "ALL"
+        if (!lang) lang = "ALL";
+        
+        if (lang === "CUSTOM") {
+            var customUrl = appCore.get_setting("com.240mp.iptv", "custom_url") || ""
+            console.log("IPTV DEBUG - Custom URL is:", customUrl)
+            
+            if (customUrl === "") {
+                // No custom URL set yet, redirect user to input screen
+                console.log("IPTV DEBUG - Redirecting to Link.qml due to empty custom URL")
+                itemsRoot.navigateTo("Link.qml", {}, {})
+                return
+            }
+            // Pass the entire URL into the backend
+            iptvBackend.fetchChannels(customUrl)
         } else {
-            console.log("IPTV DEBUG - Successfully resolved language to pass into C++:", lang)
+            // Standard preset language (ALL, CZ, DE, EN)
+            iptvBackend.fetchChannels(lang)
         }
         
-        // Pass the resolved language to the C++ backend
-        iptvBackend.fetchChannels(lang)
         itemList.forceActiveFocus()
     }
 

@@ -17,6 +17,12 @@
       "options_source": "dynamic",
       "options_slot": "get_playlist_languages",
       "default": "ALL"
+    },
+    {
+      "key": "custom_url",
+      "label": "Custom IPTV URL",
+      "type": "text",
+      "default": ""
     }
   ]
 }
