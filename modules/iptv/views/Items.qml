@@ -143,7 +143,7 @@ Component.onCompleted: {
             if (customUrl === "") {
                 // No custom URL set yet, redirect user to input screen
                 console.log("IPTV DEBUG - Redirecting to Link.qml due to empty custom URL")
-                itemsRoot.navigateTo("Link.qml", {}, {})
+                navigateTo("Link.qml", {}, {})
                 return
             }
             // Pass the entire URL into the backend
