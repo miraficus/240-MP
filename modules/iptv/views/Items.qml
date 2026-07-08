@@ -131,7 +131,10 @@ FocusScope {
     }
 
     Component.onCompleted: {
-        var lang = appCore.get_setting(moduleRoot.moduleId, "playlist_lang") || "ALL"
+        var lang = appCore.get_setting(moduleRoot.moduleId, "playlist_lang")
+        console.log("QML IPTV DEBUG - Loaded language is:", lang)
+        
+        if (!lang) lang = "ALL";
 
         iptvBackend.fetchChannels(lang)
         itemList.forceActiveFocus()

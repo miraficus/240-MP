@@ -19,13 +19,17 @@ void IptvBackend::get_playlist_languages() {
 }
 
 void IptvBackend::fetchChannels(const QString &langCode) {
+    QString cleanLang = langCode.trimmed().toUpper();
+
     QString targetUrl = "https://iptv-org.github.io/iptv/index.m3u"; // Default ALL
 
-    if (langCode == "CZ") {
+    if (cleanLang == "CZ") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/ces.m3u";
-    } else if (langCode == "EN") {
+    } else if (cleanLang == "EN") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/eng.m3u";
     }
+
+    qDebug() << "IPTV BACKEND: Language:" << cleanLang << "Downloading from URL:" << targetUrl;
 
     QNetworkRequest request((QUrl(targetUrl)));
     request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
