@@ -1,16 +1,17 @@
 import QtQuick
+import QtQuick.Controls
 import Components
 
 FocusScope {
-    focus: true
     id: linkRoot
+    anchors.fill: parent
+    focus: true
 
     property var navParams: ({})
     signal navigateTo(string path, var params, var listState)
-    signal replaceWith(string path, var params)
     signal goBack()
 
-    property string customUrl: appCore.get_setting("com.240mp.iptv", "custom_url") || ""
+    property string customUrl: appCore ? (appCore.get_setting("com.240mp.iptv", "custom_url") || "") : ""
     property string errorMsg: ""
 
     Component.onCompleted: {
@@ -23,112 +24,94 @@ FocusScope {
             event.accepted = true
             return
         }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            linkRoot.submit()
-            event.accepted = true
-        }
     }
 
     function submit() {
-        if (customUrl === "" || (!customUrl.startsWith("http://") && !customUrl.startsWith("https://"))) {
+        var trimmedUrl = customUrl.trim()
+        if (trimmedUrl === "" || (!trimmedUrl.toLowerCase().startsWith("http://") && !trimmedUrl.toLowerCase().startsWith("https://"))) {
             errorMsg = "PLEASE ENTER A VALID HTTP/HTTPS URL"
             return
         }
         errorMsg = ""
-        // Save URL and enforce CUSTOM playlist selection
-        appCore.save_setting("com.240mp.iptv", "custom_url", linkRoot.customUrl)
-        appCore.save_setting("com.240mp.iptv", "playlist_lang", "CUSTOM")
         
-        // Go back to channel list
+        if (appCore) {
+            appCore.save_setting("com.240mp.iptv", "custom_url", trimmedUrl)
+            appCore.save_setting("com.240mp.iptv", "playlist_lang", "CUSTOM")
+        }
+        
         goBack()
     }
 
+    // Header matching Items.qml structure
     AppBar {
-        iconSource: moduleRoot.moduleIcon
-        title: moduleRoot.moduleName
-        subtitle: "Custom IPTV Playlist"
+        id: appBar
+        iconSource: _moduleInfo ? _moduleInfo.icon : ""
+        title: _moduleInfo ? _moduleInfo.name : "IPTV"
+        subtitle: "Custom M3U Playlist URL"
         anchors.top: parent.top
         anchors.left: parent.left
-        anchors.topMargin: root.sh * 0.125
-        anchors.leftMargin: root.sw * 0.125
+        anchors.topMargin: parent.height * 0.125
+        anchors.leftMargin: parent.width * 0.125
     }
 
     Column {
         anchors.centerIn: parent
-        spacing: root.sh * 0.0333333
+        spacing: parent.height * 0.033
 
         Column {
-            spacing: root.sh * 0.0166667
-            width: root.sw * 0.6
-            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: parent.height * 0.016
+            width: 400
 
             Text {
-                text: "M3U PLAYLIST URL"
-                color: root.secondaryColor
-                font.family: root.globalFont
-                font.pixelSize: root.sh * 0.0291667
+                text: "ENTER PLAYLIST URL:"
+                color: "#FFFFFF"
+                font.pixelSize: 16
             }
 
             Rectangle {
                 width: parent.width
-                height: root.sh * 0.075
-                color: root.surfaceColor
-                border.color: root.accentColor
-                border.width: root.sh * 0.003125
+                height: 40
+                color: "#222222"
+                border.color: "#FFFFFF"
+                border.width: 2
 
                 TextInput {
                     id: serverInput
                     anchors.fill: parent
-                    anchors.margins: root.sh * 0.0166667
+                    anchors.margins: 8
                     text: linkRoot.customUrl
-                    color: root.primaryColor
-                    font.family: root.globalFont
-                    font.pixelSize: root.sh * 0.0333333
+                    color: "#FFFFFF"
+                    font.pixelSize: 18
                     clip: true
+                    focus: true
                     
                     onTextChanged: { linkRoot.customUrl = text }
+
+                    Keys.onReturnPressed: {
+                        linkRoot.submit()
+                    }
                 }
             }
         }
 
-        // Action Button
-        Rectangle {
-            width: root.sw * 0.2
-            height: root.sh * 0.0583333
-            color: root.accentColor
-            anchors.horizontalCenter: parent.horizontalCenter
-
-            Text {
-                anchors.centerIn: parent
-                text: "SAVE & LOAD"
-                color: root.surfaceColor
-                font.family: root.globalFont
-                font.pixelSize: root.sh * 0.0333333
-            }
-        }
-
+        // Error message text block
         Text {
             visible: errorMsg !== ""
             text: errorMsg
-            color: root.accentColor
-            font.family: root.globalFont
-            horizontalAlignment: Text.AlignHCenter
+            color: "#FF0000"
+            font.pixelSize: 16
             anchors.horizontalCenter: parent.horizontalCenter
-            width: root.sw * 0.6
-            wrapMode: Text.WordWrap
-            font.pixelSize: root.sh * 0.0333333
         }
     }
 
-    // Footer Hints
+    // Footer matching Items.qml structure
     Text {
-        text: root.hints.back + ":BACK " + root.hints.select + ":SAVE"
-        color: root.tertiaryColor
-        font.family: root.globalFont
+        text: "BACK: CANCEL / ENTER: SAVE & LOAD"
+        color: "#888888"
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        anchors.bottomMargin: root.sh * 0.1041667
-        anchors.leftMargin: root.sw * 0.125
-        font.pixelSize: root.sh * 0.0333333
+        anchors.bottomMargin: parent.height * 0.1
+        anchors.leftMargin: parent.width * 0.125
+        font.pixelSize: 16
     }
 }
