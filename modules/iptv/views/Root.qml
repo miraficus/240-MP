@@ -47,7 +47,10 @@ FocusScope {
         Connections {
             target: internalLoader.item
             ignoreUnknownSignals: true
-            function onNavigateTo(path, params, listState) { moduleRoot.navigateTo(path, params, listState) }
+            function onNavigateTo(path, params, listState) { 
+                console.log("IPTV ROUTER - Received navigateTo signal for path:", path)
+                moduleRoot.navigateTo(path, params, listState) 
+            }
             function onGoBack() { moduleRoot.navigateBack() }
         }
     }

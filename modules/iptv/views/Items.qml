@@ -130,7 +130,7 @@ FocusScope {
         }
     }
 
-Component.onCompleted: {
+    Component.onCompleted: {
         var lang = appCore.get_setting("com.240mp.iptv", "playlist_lang")
         console.log("IPTV DEBUG - Loaded language via full manual ID:", lang)
         
@@ -154,6 +154,16 @@ Component.onCompleted: {
         }
         
         itemList.forceActiveFocus()
+    }
+
+    Timer {
+        id: redirectTimer
+        interval: 50
+        repeat: false
+        onTriggered: {
+            console.log("IPTV DEBUG - Triggering delayed navigateTo to Link.qml")
+            navigateTo("Link.qml", {}, {})
+        }
     }
 
     // Footer
