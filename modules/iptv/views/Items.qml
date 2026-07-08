@@ -142,7 +142,7 @@ FocusScope {
             
             if (customUrl === "") {
                 console.log("IPTV DEBUG - Redirecting to Link.qml due to empty custom URL")
-                navigateTo("Link.qml", {}, {})
+                ItemsRoot.navigateTo("Link.qml", {}, {})
                 return
             }
             iptvBackend.fetchChannels(customUrl)
