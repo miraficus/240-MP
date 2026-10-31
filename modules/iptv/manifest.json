@@ -1,0 +1,29 @@
+{
+  "id": "com.240mp.iptv",
+  "name": "IPTV",
+  "icon": "assets/images/logo.svg",
+  "entry_point_qml": "views/Root.qml",
+  "settings": [
+    {
+      "key": "enabled",
+      "label": "Enable IPTV",
+      "type": "toggle",
+      "default": "OFF"
+    },
+    {
+      "key": "playlist_lang",
+      "label": "Playlist Language",
+      "type": "list_single",
+      "options_source": "dynamic",
+      "options_slot": "get_playlist_languages",
+      "default": "ALL"
+    },
+    {
+      "key": "custom_url",
+      "label": "Custom IPTV URL",
+      "type": "text",
+      "default": "",
+      "editor_qml": "modules/iptv/views/Link.qml"
+    }
+  ]
+}

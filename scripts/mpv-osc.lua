@@ -422,3 +422,42 @@ mp.register_script_message("skip-overlay-state", function(state)
     -- focus_btn otherwise persists from the last menu interaction.
     if skip_active then focus_btn = 1 end
 end)
+
+
+-- IPTV radio playlists still use the normal mpv window and keyboard controls.
+-- Keep this separate from the transient navigation OSD, so closing its menu
+-- cannot erase the audio-only indication. Other modules do not opt in.
+if mp.get_opt("iptv-no-video") == "yes" then
+    local no_video = mp.create_osd_overlay("ass-events")
+    no_video.res_x = 1280
+    no_video.res_y = 720
+    local file_loaded = false
+
+    local function update_no_video()
+        local has_audio, has_video = false, false
+        for _, track in ipairs(mp.get_property_native("track-list", {})) do
+            if track.selected then
+                if track.type == "audio" then has_audio = true end
+                if track.type == "video" then has_video = true end
+            end
+        end
+        if file_loaded and has_audio and not has_video then
+            no_video.data = "{\\an5\\pos(640,360)\\fnVCR OSD Mono\\fs48\\1c&HFFFFFF&\\bord0\\shad0}NO VIDEO"
+            no_video:update()
+        else
+            no_video:remove()
+        end
+    end
+
+    mp.register_event("file-loaded", function()
+        file_loaded = true
+        update_no_video()
+    end)
+    local function clear_no_video()
+        file_loaded = false
+        no_video:remove()
+    end
+    mp.register_event("start-file", clear_no_video)
+    mp.register_event("end-file", clear_no_video)
+    mp.observe_property("track-list", "native", update_no_video)
+end

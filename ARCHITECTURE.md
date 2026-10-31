@@ -95,6 +95,7 @@ Loaded at startup by `AppCore` — the single source of truth for a module's ide
 | `list_single` | Single-select list | `options_source`, `options_slot`, `apply_slot` |
 | `multiselect_submenu` | Multi-select list via submenu | `options_source`, `options_slot` |
 | `directory_browser` | Keyboard-navigable directory picker | `default` (path string, may be empty) |
+| `text` | Module-provided text editor, opened from Settings | `editor_qml` (path relative to app root); editor receives `navParams.settingsEditor: true` and emits `goBack()` when done |
 | `action` | Button that calls a backend slot | `action_slot` |
 
 Additional fields any setting may carry:
