@@ -31,9 +31,11 @@ FocusScope {
             false, 
             "", 
             false, 
-            ["--cache=yes", "--demuxer-max-bytes=50MiB", "--hr-seek=yes"],
-            0, 
-            false
+            [], // external subtitle titles
+            0,
+            false,
+            ["--cache=yes", "--demuxer-max-bytes=50MiB", "--hr-seek=yes",
+             "--force-window=yes", "--script-opt=iptv-no-video=yes"]
         )
     }
 

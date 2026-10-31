@@ -36,6 +36,14 @@ Item {
         signal errorOccurred(string message)
         function fetchChannels(source) { requested = source }
     }
+    QtObject {
+        id: mpvController
+        property var args: []
+        signal positionChanged(int ms)
+        signal playbackEnded(int position, int duration, string reason)
+        function loadAndPlay() { args = Array.prototype.slice.call(arguments) }
+        function sendKey(key) {}
+    }
     Loader { id: page; anchors.fill: parent }
     SignalSpy { id: navigation; signalName: "navigateTo" }
     SignalSpy { id: back; signalName: "goBack" }
@@ -55,6 +63,7 @@ Item {
             page.source = ""
             appCore.values = {playlist_lang: "CUSTOM", custom_url: ""}
             iptvBackend.requested = ""
+            mpvController.args = []
             navigation.clear()
             back.clear()
         }
@@ -68,6 +77,14 @@ Item {
             var field = findChild(page.item, "playlistUrlInput")
             verify(field !== null)
             return field
+        }
+        function test_player_enables_audio_only_overlay() {
+            load("../../modules/iptv/views/Player.qml", {item: {url: "https://example.org/radio.mp3"}})
+            tryVerify(function() { return mpvController.args.length === 17 })
+            compare(mpvController.args[13].length, 0)
+            var extra = mpvController.args[16]
+            verify(extra.indexOf("--force-window=yes") >= 0)
+            verify(extra.indexOf("--script-opt=iptv-no-video=yes") >= 0)
         }
         function test_settings_opens_editor() {
             load("../../views/ModuleSettings.qml", {moduleId: "com.240mp.iptv"})

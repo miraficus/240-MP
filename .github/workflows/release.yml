@@ -302,6 +302,7 @@ jobs:
             libass-dev \
             libplacebo-dev \
             liblua5.2-dev \
+            lua5.2 \
             libva-dev \
             libx11-dev \
             libxext-dev \
@@ -343,6 +344,7 @@ jobs:
         run: |
           cmake -S tests/iptv -B build-iptv-tests -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
           cmake --build build-iptv-tests --parallel
+          lua5.2 tests/iptv/tst_no_video.lua
           ./build-iptv-tests/iptv_backend_test
           ./build-iptv-tests/iptv_navigation_test -input tests/iptv -import views
 
