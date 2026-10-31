@@ -151,7 +151,7 @@ FocusScope {
             // A bad mapping path or missing yt-dlp surfaces as an mpv failure
             // before any position event — show the error instead of leaving.
             if (reason === "failed" && !playbackStarted) {
-                playerRoot.errorMessage = "PLAYBACK FAILED\n\nCHECK THE MAPPED PATH OR URL\n(YOUTUBE LINKS REQUIRE YT-DLP)"
+                playerRoot.errorMessage = qsTr("PLAYBACK FAILED\n\nCHECK THE MAPPED PATH OR URL\n(YOUTUBE LINKS REQUIRE YT-DLP)")
                 return
             }
             var pos   = lastKnownPositionMs || finalPositionMs
@@ -241,7 +241,7 @@ FocusScope {
             visible: !overlayVisible && !playbackStarted && errorMessage === ""
 
             Text {
-                text: "LOADING..."
+                text: qsTr("LOADING...")
                 color: "white"
                 font.family: root.globalFont
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -277,7 +277,7 @@ FocusScope {
                 font.pixelSize: root.sh * 0.0375 //18
             }
             Text {
-                text: root.hints.back + ":BACK " + root.hints.select + ":RETRY"
+                text: qsTr("%1:BACK %2:RETRY").arg(root.hints.back).arg(root.hints.select)
                 color: "#919191"
                 font.family: root.globalFont
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -304,7 +304,7 @@ FocusScope {
                 spacing: root.sh * 0.05 //24
 
                 Text {
-                    text: "RESUME PLAYBACK?"
+                    text: qsTr("RESUME PLAYBACK?")
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16
@@ -348,7 +348,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16

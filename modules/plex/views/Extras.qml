@@ -237,7 +237,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
@@ -256,7 +256,7 @@ FocusScope {
         z: 100
 
         Text {
-            text: "LOADING..."
+            text: qsTr("LOADING...")
             color: root.tertiaryColor
             font.family: root.globalFont
             anchors.centerIn: parent
@@ -264,7 +264,7 @@ FocusScope {
         }
 
         Text {
-            text: root.hints.back + ":CANCEL"
+            text: qsTr("%1:CANCEL").arg(root.hints.back)
             color: root.tertiaryColor
             font.family: root.globalFont
             anchors.horizontalCenter: parent.horizontalCenter

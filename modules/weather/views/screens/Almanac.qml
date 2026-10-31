@@ -22,7 +22,7 @@ Item {
         id: title
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        text: "ALMANAC"
+        text: qsTr("ALMANAC")
         color: root.primaryColor
         font.family: root.globalFont
         font.pixelSize: screen.lineSize
@@ -58,7 +58,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             Text {
                 width: screen.labelWidth
-                text: "SUNRISE"
+                text: qsTr("SUNRISE")
                 color: root.accentColor
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0375
@@ -82,7 +82,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             Text {
                 width: screen.labelWidth
-                text: "SUNSET"
+                text: qsTr("SUNSET")
                 color: root.accentColor
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0375
@@ -118,7 +118,7 @@ Item {
             Text {
                 width: screen.labelWidth
                 id: moonTitle
-                text: "MOON PHASES"
+                text: qsTr("MOON PHASES")
                 color: root.accentColor
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0375

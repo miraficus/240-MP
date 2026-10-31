@@ -99,7 +99,7 @@ Run on the Pi with RPi OS Trixie (Debian 13):
 sudo apt-get update
 sudo apt-get install -y \
   build-essential cmake \
-  qt6-base-dev qt6-declarative-dev \
+  qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-l10n-tools \
   qml6-module-qtquick qml6-module-qtquick-controls \
   qml6-module-qtquick-window \
   libqt6svg6 qt6-svg-dev qt6-svg-plugins qt6-wayland \
@@ -456,3 +456,7 @@ Go to **Actions** → select the workflow run → each build job has an **Artifa
 **After the workflow completes:**
 
 Go to the repository on GitHub → **Releases** → select the release for the tag you set. All build artifacts (the `.dmg`, both Linux packages, `SHA256SUMS` and `install.sh`) are listed under Assets.
+
+## Translation development
+
+Qt Linguist tools (`lupdate` and `lrelease`) are required in addition to Qt's runtime/development libraries. On Debian/Ubuntu install `qt6-tools-dev qt6-l10n-tools`; the Qt online installer and Homebrew Qt distributions also provide Linguist. See [TRANSLATING.md](TRANSLATING.md) for updating catalogs and adding languages. Compiled QM files are embedded into the executable, so installation and AppImage packaging require no extra translation directory.

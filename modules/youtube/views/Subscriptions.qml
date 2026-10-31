@@ -147,7 +147,7 @@ FocusScope {
         anchors.leftMargin: root.sw * 0.125
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: itemsRoot.mode === "feed" ? "Subscriptions"
+        subtitle: itemsRoot.mode === "feed" ? qsTr("Subscriptions")
                 : itemsRoot.mode === "watchlater" ? "Watch Later"
                 : itemsRoot.mode === "history" ? "History"
                 : itemsRoot.mode === "playlist" ? itemsRoot.playlistName
@@ -157,7 +157,7 @@ FocusScope {
     // Loading / empty / error states
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -176,7 +176,7 @@ FocusScope {
     }
     Text {
         visible: !isLoading && errorMessage === "" && items.length === 0
-        text: "NO VIDEOS FOUND"
+        text: qsTr("NO VIDEOS FOUND")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -343,7 +343,7 @@ FocusScope {
                 spacing: root.sh * 0.05
 
                 Text {
-                    text: wlRemoveMode ? "REMOVE FROM WATCH LATER?" : "SAVE TO WATCH LATER?"
+                    text: wlRemoveMode ? qsTr("REMOVE FROM WATCH LATER?") : qsTr("SAVE TO WATCH LATER?")
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333
@@ -382,7 +382,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333
@@ -396,9 +396,9 @@ FocusScope {
     Text {
         id: footer
         visible: !wlOverlayVisible
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE "
+        text: qsTr("%1:BACK %2:NAVIGATE ").arg(root.hints.back).arg(root.hints.navigate)
               + root.hints.browse + (itemsRoot.mode === "watchlater" ? ":REMOVE " : ":SAVE ")
-              + root.hints.select + ":SELECT"
+              + qsTr("%1:SELECT").arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

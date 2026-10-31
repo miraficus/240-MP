@@ -201,7 +201,7 @@ FocusScope {
             visible: errorMessage === ""
 
             Text {
-                text: "LOADING..."
+                text: qsTr("LOADING...")
                 color: "white"
                 font.family: root.globalFont
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -237,7 +237,7 @@ FocusScope {
                 font.pixelSize: root.sh * 0.0375
             }
             Text {
-                text: root.hints.back + ":BACK " + root.hints.select + ":RETRY"
+                text: qsTr("%1:BACK %2:RETRY").arg(root.hints.back).arg(root.hints.select)
                 color: "#919191"
                 font.family: root.globalFont
                 anchors.horizontalCenter: parent.horizontalCenter

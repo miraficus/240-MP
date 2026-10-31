@@ -1,4 +1,6 @@
 #include "MpvController.h"
+#include "../../i18n/MpvStrings.h"
+#include <QSaveFile>
 #include "../AppCore.h"
 #include "../util/YtDlpLocator.h"
 #include "../util/MpvLocator.h"
@@ -242,6 +244,18 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     }
 
     QStringList scriptOpts;
+    // The subprocess has no Qt translator. Supply only UI strings, leaving
+    // media metadata and mpv protocol commands untouched.
+    const QString languagePath = m_dataRoot + "/mpv-i18n.json";
+    if (!languagePath.contains(',')) {
+        QJsonObject dictionary;
+        for (const char *source : mpvSourceStrings)
+            dictionary[source] = QCoreApplication::translate("MpvOsd", source);
+        QSaveFile file(languagePath);
+        if (file.open(QIODevice::WriteOnly) &&
+            file.write(QJsonDocument(dictionary).toJson(QJsonDocument::Compact)) != -1 && file.commit())
+            scriptOpts << QString("i18n-file=%1").arg(languagePath);
+    }
     if (transcodeOffsetSec > 0.5f)
         scriptOpts << QString("transcode-offset=%1").arg(double(transcodeOffsetSec), 0, 'f', 3);
     if (screensaverTimeout > 0)

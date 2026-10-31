@@ -198,12 +198,12 @@ FocusScope {
                             : "Resume from " + formatTime(savedPos),
                         startMs: savedPos, plPos: savedPl, shuffle: false })
             if (resumeSetting === "ask")
-                opts.push({ label: "Start from the beginning", startMs: 0, plPos: -1, shuffle: false })
+                opts.push({ label: qsTr("Start from the beginning"), startMs: 0, plPos: -1, shuffle: false })
         } else if (askShuffle) {
-            opts.push({ label: "Play in order", startMs: 0, plPos: -1, shuffle: false })
+            opts.push({ label: qsTr("Play in order"), startMs: 0, plPos: -1, shuffle: false })
         }
         if (askShuffle)
-            opts.push({ label: "Shuffle", startMs: 0, plPos: -1, shuffle: true })
+            opts.push({ label: qsTr("Shuffle"), startMs: 0, plPos: -1, shuffle: true })
 
         if (opts.length > 1) {
             choices        = opts
@@ -243,7 +243,7 @@ FocusScope {
                 Text {
                     // Generic title whenever a Shuffle choice is offered; the classic
                     // resume-only dialog keeps its original wording.
-                    text: choices.some(function(c) { return c.shuffle }) ? "START PLAYBACK?" : "RESUME PLAYBACK?"
+                    text: choices.some(function(c) { return c.shuffle }) ? qsTr("START PLAYBACK?") : qsTr("RESUME PLAYBACK?")
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16
@@ -282,7 +282,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16

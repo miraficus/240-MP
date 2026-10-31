@@ -60,7 +60,7 @@ FocusScope {
     // Loading Indicator
     Text {
         visible: libraries.length === 0
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -100,7 +100,7 @@ FocusScope {
             if (lib.key === "continue_watching") {
                 browseRoot.navigateTo("Items.qml", {
                     mode: "resume",
-                    title: "CONTINUE WATCHING",
+                    title: qsTr("CONTINUE WATCHING"),
                     libraryName: "CONTINUE WATCHING"
                 }, { currentIndex: libraryList.currentIndex })
                 return
@@ -109,7 +109,7 @@ FocusScope {
             if (lib.key === "up_next") {
                 browseRoot.navigateTo("Items.qml", {
                     mode: "up_next",
-                    title: "NEXT UP",
+                    title: qsTr("NEXT UP"),
                     libraryName: "NEXT UP"
                 }, { currentIndex: libraryList.currentIndex })
                 return
@@ -211,7 +211,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

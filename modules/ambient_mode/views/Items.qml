@@ -109,7 +109,7 @@ FocusScope {
         spacing: root.sh * 0.0333333 //16
         visible: videoFiles.length === 0
         Text {
-            text: "No items found"
+            text: qsTr("No items found")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -118,7 +118,7 @@ FocusScope {
             font.pixelSize: root.sh * 0.05 //24
         }
         Text {
-            text: "Please add items in the ambient:mode media directory"
+            text: qsTr("Please add items in the ambient:mode media directory")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -139,7 +139,7 @@ FocusScope {
         // Playback Settings
         Text {
             id: playbackSettingsLabel
-            text: "Playback Settings:"
+            text: qsTr("Playback Settings:")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -165,7 +165,7 @@ FocusScope {
             }
 
             Text {
-                text: "Video"
+                text: qsTr("Video")
                 color: focusRow === 0 ? root.surfaceColor : root.primaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -199,7 +199,7 @@ FocusScope {
 
                     Text {
                         id: videoValueText
-                        text: videoShuffleSelected ? "SHUFFLE" : videoFiles[videoIndex].name
+                        text: videoShuffleSelected ? qsTr("SHUFFLE") : videoFiles[videoIndex].name
                         color: focusRow === 0 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         font.capitalization: Font.AllUppercase
@@ -249,7 +249,7 @@ FocusScope {
             }
 
             Text {
-                text: "Audio"
+                text: qsTr("Audio")
                 color: focusRow === 1 ? root.surfaceColor : root.primaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -281,7 +281,7 @@ FocusScope {
 
                     Text {
                         id: audioValueText
-                        text: audioShuffleSelected ? "SHUFFLE"
+                        text: audioShuffleSelected ? qsTr("SHUFFLE")
                             : audioIndex === 0 ? "VIDEO AUDIO"
                             : audioFiles[audioIndex - 1].name
                         color: focusRow === 1 ? root.surfaceColor : root.primaryColor
@@ -336,7 +336,7 @@ FocusScope {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "START ►"
+                    text: qsTr("START ►")
                     color: focusRow === 2 ? root.surfaceColor : root.primaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.05 //24
@@ -347,7 +347,7 @@ FocusScope {
 
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.change + ":CHANGE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:CHANGE %4:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.change).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

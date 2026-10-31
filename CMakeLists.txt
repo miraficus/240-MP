@@ -48,6 +48,7 @@ endif()
 
 add_executable(240mp
     src/main.cpp
+    src/i18n/LanguageManager.cpp
     src/AppCore.cpp
     src/modules/local_files/LocalFilesBackend.cpp
     src/modules/plex/PlexBackend.cpp
@@ -73,6 +74,20 @@ add_executable(240mp
     src/update/UpdateManager.cpp
     $<$<BOOL:${APPLE}>:src/util/MacosUtils.mm>
 )
+
+# Qt 6.4-compatible Linguist integration. QM catalogs are embedded so native,
+# macOS and AppImage builds share exactly the same translation lookup path.
+find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+file(GLOB_RECURSE I18N_QML_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/views/*.qml" "${CMAKE_SOURCE_DIR}/modules/*.qml")
+file(GLOB_RECURSE I18N_CPP_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.h")
+qt_add_translations(240mp
+    TS_FILES "${CMAKE_SOURCE_DIR}/i18n/240mp_cs.ts"
+    SOURCES "${CMAKE_SOURCE_DIR}/Main.qml" ${I18N_QML_SOURCES} ${I18N_CPP_SOURCES}
+            "${CMAKE_SOURCE_DIR}/i18n/ManifestStrings.h" "${CMAKE_SOURCE_DIR}/i18n/MpvStrings.h"
+    RESOURCE_PREFIX "/i18n"
+    LUPDATE_OPTIONS -locations relative -no-obsolete
+    LRELEASE_OPTIONS -nounfinished)
 
 target_compile_definitions(240mp PRIVATE APP_VERSION="${APP_VERSION}")
 

@@ -57,10 +57,10 @@ FocusScope {
     // The write row rides on the same warrant as the play rows, so the three stay
     // one block: a set worth playing as a queue is a set worth putting on a card.
     property var actionRows: !queueRowsWarranted(queueItems) ? []
-        : [{ __action: "play_all", title: "» PLAY ALL" },
-           { __action: "shuffle",  title: "~ SHUFFLE"  }]
+        : [{ __action: "play_all", title: qsTr("» PLAY ALL") },
+           { __action: "shuffle",  title: qsTr("~ SHUFFLE")  }]
           .concat(cardWriter.available
-                  ? [{ __action: "write_card", title: "@ WRITE NFC CARD" }] : [])
+                  ? [{ __action: "write_card", title: qsTr("@ WRITE NFC CARD") }] : [])
     property var rows: actionRows.concat(items)
 
     // One show is already a queue — all of its episodes — so it earns the rows on
@@ -446,7 +446,7 @@ FocusScope {
     // Loading / empty / error states
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -464,7 +464,7 @@ FocusScope {
     }
     Text {
         visible: !isLoading && errorMessage === "" && items.length === 0
-        text: "NO ITEMS FOUND"
+        text: qsTr("NO ITEMS FOUND")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -668,8 +668,8 @@ FocusScope {
     Text {
         id: footer
         text: showLetterNav
-              ? root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.browse + ":BROWSE " + root.hints.select + ":SELECT"
-              : root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+              ? qsTr("%1:BACK %2:NAVIGATE %3:BROWSE %4:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.browse).arg(root.hints.select)
+              : qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

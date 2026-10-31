@@ -280,7 +280,7 @@ void EmbyBackend::check_auth() {
             return;
         }
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("AUTH CHECK FAILED: " + reply->errorString());
+            emit errorOccurred(tr("AUTH CHECK FAILED: %1").arg(reply->errorString()));
             return;
         }
         notifyAuthState();
@@ -332,11 +332,11 @@ void EmbyBackend::logout() {
 void EmbyBackend::authenticate(const QString &serverUrl, const QString &username, const QString &password) {
     QString normalized = normalizeServerUrl(serverUrl);
     if (normalized.isEmpty()) {
-        emit errorOccurred("SERVER URL REQUIRED");
+        emit errorOccurred(tr("SERVER URL REQUIRED"));
         return;
     }
     if (username.isEmpty()) {
-        emit errorOccurred("USERNAME REQUIRED");
+        emit errorOccurred(tr("USERNAME REQUIRED"));
         return;
     }
 
@@ -365,11 +365,11 @@ void EmbyBackend::authenticate(const QString &serverUrl, const QString &username
 
         if (reply->error() != QNetworkReply::NoError) {
             if (status == 401)
-                emit errorOccurred("INCORRECT USERNAME OR PASSWORD");
+                emit errorOccurred(tr("INCORRECT USERNAME OR PASSWORD"));
             else if (status > 0)
-                emit errorOccurred("SIGN IN FAILED (HTTP " + QString::number(status) + ")");
+                emit errorOccurred(tr("SIGN IN FAILED (HTTP ") + QString::number(status) + ")");
             else
-                emit errorOccurred("CONNECTION FAILED: " + reply->errorString());
+                emit errorOccurred(tr("CONNECTION FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -378,7 +378,7 @@ void EmbyBackend::authenticate(const QString &serverUrl, const QString &username
         QJsonObject user = data["User"].toObject();
 
         if (token.isEmpty() || user["Id"].toString().isEmpty()) {
-            emit errorOccurred("INVALID AUTH RESPONSE");
+            emit errorOccurred(tr("INVALID AUTH RESPONSE"));
             return;
         }
 
@@ -726,7 +726,7 @@ QVariantMap EmbyBackend::formatItem(const QJsonObject &item) const {
 
 void EmbyBackend::load_libraries() {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -735,7 +735,7 @@ void EmbyBackend::load_libraries() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD LIBRARIES FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD LIBRARIES FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -804,7 +804,7 @@ void EmbyBackend::probeHasItems(const QUrl &url, std::function<void(bool)> cb) {
 
 void EmbyBackend::load_items(const QString &parentId, const QString &includeTypes, const QString &sortBy) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -831,7 +831,7 @@ void EmbyBackend::load_items(const QString &parentId, const QString &includeType
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD ITEMS FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD ITEMS FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -845,7 +845,7 @@ void EmbyBackend::load_items(const QString &parentId, const QString &includeType
 
 void EmbyBackend::load_item_detail(const QString &itemId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -858,7 +858,7 @@ void EmbyBackend::load_item_detail(const QString &itemId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD ITEM DETAIL FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD ITEM DETAIL FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -869,7 +869,7 @@ void EmbyBackend::load_item_detail(const QString &itemId) {
 
 void EmbyBackend::load_children(const QString &itemId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -888,7 +888,7 @@ void EmbyBackend::load_children(const QString &itemId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD CHILDREN FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD CHILDREN FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -902,7 +902,7 @@ void EmbyBackend::load_children(const QString &itemId) {
 
 void EmbyBackend::load_boxset_children(const QString &parentId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -925,7 +925,7 @@ void EmbyBackend::load_boxset_children(const QString &parentId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD BOXSET FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD BOXSET FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -939,7 +939,7 @@ void EmbyBackend::load_boxset_children(const QString &parentId) {
 
 void EmbyBackend::load_folder_children(const QString &parentId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -960,7 +960,7 @@ void EmbyBackend::load_folder_children(const QString &parentId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD FOLDER FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD FOLDER FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -983,7 +983,7 @@ void EmbyBackend::load_folder_children(const QString &parentId) {
 
 void EmbyBackend::load_seasons(const QString &seriesId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -999,7 +999,7 @@ void EmbyBackend::load_seasons(const QString &seriesId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD SEASONS FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD SEASONS FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonArray items = QJsonDocument::fromJson(reply->readAll()).object()["Items"].toArray();
@@ -1013,7 +1013,7 @@ void EmbyBackend::load_seasons(const QString &seriesId) {
 
 void EmbyBackend::load_episodes(const QString &seriesId, const QString &seasonId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -1034,7 +1034,7 @@ void EmbyBackend::load_episodes(const QString &seriesId, const QString &seasonId
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD EPISODES FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD EPISODES FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonArray items = QJsonDocument::fromJson(reply->readAll()).object()["Items"].toArray();
@@ -1048,7 +1048,7 @@ void EmbyBackend::load_episodes(const QString &seriesId, const QString &seasonId
 
 void EmbyBackend::load_continue_watching() {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -1063,7 +1063,7 @@ void EmbyBackend::load_continue_watching() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD CONTINUE WATCHING FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD CONTINUE WATCHING FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -1077,7 +1077,7 @@ void EmbyBackend::load_continue_watching() {
 
 void EmbyBackend::load_up_next() {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -1093,7 +1093,7 @@ void EmbyBackend::load_up_next() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD UP NEXT FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD UP NEXT FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -1107,7 +1107,7 @@ void EmbyBackend::load_up_next() {
 
 void EmbyBackend::load_series_next_up(const QString &seriesId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -1125,7 +1125,7 @@ void EmbyBackend::load_series_next_up(const QString &seriesId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD SERIES NEXT UP FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD SERIES NEXT UP FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonArray items = QJsonDocument::fromJson(reply->readAll()).object()["Items"].toArray();
@@ -1144,7 +1144,7 @@ void EmbyBackend::get_playback_url(const QString &itemId, const QString &mediaSo
                                        int audioStreamIndex, int subtitleStreamIndex,
                                        bool forceTranscode) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -1304,14 +1304,14 @@ void EmbyBackend::get_playback_url(const QString &itemId, const QString &mediaSo
     connect(reply, &QNetworkReply::finished, this, [this, reply, itemId, mediaSourceId, audioStreamIndex, subtitleStreamIndex, directPlay]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("PLAYBACK INFO FAILED: " + reply->errorString());
+            emit errorOccurred(tr("PLAYBACK INFO FAILED: %1").arg(reply->errorString()));
             return;
         }
 
         QJsonObject data = QJsonDocument::fromJson(reply->readAll()).object();
         QJsonArray sources = data["MediaSources"].toArray();
         if (sources.isEmpty()) {
-            emit errorOccurred("NO PLAYABLE SOURCE");
+            emit errorOccurred(tr("NO PLAYABLE SOURCE"));
             return;
         }
 
@@ -1426,7 +1426,7 @@ void EmbyBackend::get_playback_url(const QString &itemId, const QString &mediaSo
         }
         QString transcodeUrl = source["TranscodingUrl"].toString();
         if (transcodeUrl.isEmpty()) {
-            emit errorOccurred("NO TRANSCODE URL");
+            emit errorOccurred(tr("NO TRANSCODE URL"));
             return;
         }
         m_currentPlaySessionId = playSessionId;

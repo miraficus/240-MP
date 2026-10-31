@@ -24,10 +24,10 @@ FocusScope {
 
     // type → {label, order}. Buckets render in this order; unknown types ignored.
     function categoryFor(type) {
-        if (type === "movie")   return { label: "MOVIES",      order: 0 }
-        if (type === "series")  return { label: "SERIES",      order: 1 }
-        if (type === "episode") return { label: "EPISODES",    order: 2 }
-        if (type === "boxset")  return { label: "COLLECTIONS", order: 3 }
+        if (type === "movie")   return { label: qsTr("MOVIES"),      order: 0 }
+        if (type === "series")  return { label: qsTr("SERIES"),      order: 1 }
+        if (type === "episode") return { label: qsTr("EPISODES"),    order: 2 }
+        if (type === "boxset")  return { label: qsTr("COLLECTIONS"), order: 3 }
         return null
     }
 
@@ -145,7 +145,7 @@ FocusScope {
     // Loading / empty / error states
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -163,7 +163,7 @@ FocusScope {
     }
     Text {
         visible: !isLoading && errorMessage === "" && categories.length === 0
-        text: "NO ITEMS FOUND"
+        text: qsTr("NO ITEMS FOUND")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -234,7 +234,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

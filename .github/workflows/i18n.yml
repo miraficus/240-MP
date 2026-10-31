@@ -1,0 +1,51 @@
+name: Translation checks
+on:
+  push:
+    branches: [i18n]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }} and translation tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: x86_64, runner: ubuntu-24.04}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.runner }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Install build and Linguist tools
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake python3 qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-tools-dev qt6-l10n-tools libssl-dev libsdl2-dev libdrm-dev libpcsclite-dev qml6-module-qttest qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtqml-workerscript lua5.2
+      - name: Check generated extraction sources
+        run: python3 scripts/update-manifest-translations.py --check
+      - name: Configure and update catalogs
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build --target 240mp_lupdate
+      - name: Build application and embedded translations
+        run: cmake --build build --parallel
+      - name: Test locale selection, catalog loading and translated settings
+        run: |
+          cmake -S tests/i18n -B build-i18n-tests
+          cmake --build build-i18n-tests --parallel
+          python3 scripts/check-translations.py
+          lua5.2 tests/i18n/tst_mpv.lua
+          ./build-i18n-tests/i18n_backend_test
+          ./build-i18n-tests/i18n_navigation_test -input tests/i18n -import views
+      - name: Upload updated catalogs
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: translation-catalogs-${{ matrix.arch }}
+          path: |
+            i18n/*.ts
+            build/*.qm
+          if-no-files-found: error

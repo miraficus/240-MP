@@ -40,7 +40,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: "Choose a Server"
+        subtitle: qsTr("Choose a Server")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -50,7 +50,7 @@ FocusScope {
     // Connecting indicator
     Text {
         visible: pickerRoot.waiting
-        text: "CONNECTING..."
+        text: qsTr("CONNECTING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -151,7 +151,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

@@ -135,11 +135,11 @@ FocusScope {
     function submit() {
         if (waiting) return
         if (serverUrl === "") {
-            errorMsg = "Please enter a server URL"
+            errorMsg = qsTr("Please enter a server URL")
             return
         }
         if (username === "") {
-            errorMsg = "Please enter a username"
+            errorMsg = qsTr("Please enter a username")
             return
         }
         waiting = true
@@ -153,7 +153,7 @@ FocusScope {
     function submitConnect() {
         if (waiting) return
         if (username === "") {
-            errorMsg = "Enter your Emby Connect email"
+            errorMsg = qsTr("Enter your Emby Connect email")
             return
         }
         waiting = true
@@ -169,7 +169,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: "Connect to Server"
+        subtitle: qsTr("Connect to Server")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -273,16 +273,16 @@ FocusScope {
 
                 Row {
                     spacing: root.sw * 0.025 //16
-                    MethodOption { label: "Local Server"; value: 0 }
+                    MethodOption { label: qsTr("Local Server"); value: 0 }
                     Text {
-                        text: "OR"
+                        text: qsTr("OR")
                         color: root.tertiaryColor
                         font.family: root.globalFont
                         font.capitalization: Font.AllUppercase
                         font.pixelSize: root.sh * 0.0291667 //14
                         anchors.verticalCenter: parent.verticalCenter
                     }
-                    MethodOption { label: "Emby Connect";   value: 1 }
+                    MethodOption { label: qsTr("Emby Connect");   value: 1 }
                 }
             }
             Column {
@@ -295,7 +295,7 @@ FocusScope {
                 // collapses rather than leaving a gap.
                 Field {
                     visible: authRoot.method === 0
-                    label: "Server URL:"
+                    label: qsTr("Server URL:")
                     index: authRoot.idxServer
                     text: authRoot.serverUrl
                     width: root.sw * 0.71875 //460
@@ -314,7 +314,7 @@ FocusScope {
                         // Connect takes the emby.media email. The method is already
                         // chosen by the time this is reached, so the label is
                         // always the one that will actually work.
-                        label: authRoot.method === 1 ? "Email:" : "Username:"
+                        label: authRoot.method === 1 ? qsTr("Email:") : qsTr("Username:")
                         index: authRoot.idxUser
                         text: authRoot.username
                         width: root.sw * 0.340625 //218
@@ -323,7 +323,7 @@ FocusScope {
 
                     // Password field
                     Field {
-                        label: "Password:"
+                        label: qsTr("Password:")
                         index: authRoot.idxPass
                         masked: true
                         text: authRoot.password
@@ -341,7 +341,7 @@ FocusScope {
 
             // status line: connecting > error > guidance for the current step
             Text {
-                text: waiting ? "CONNECTING..."
+                text: waiting ? qsTr("CONNECTING...")
                     : (errorMsg !== "" ? errorMsg
                     : (focusIndex === idxMethod ? "CHOOSE HOW TO SIGN IN"
                     : (method === 1 ? "EMBY CONNECT USES YOUR EMBY.MEDIA EMAIL"
@@ -369,7 +369,7 @@ FocusScope {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "Sign In"
+                    text: qsTr("Sign In")
                     color: focusIndex === idxSubmit ? root.surfaceColor : root.primaryColor
                     font.family: root.globalFont
                     font.capitalization: Font.AllUppercase
@@ -381,7 +381,7 @@ FocusScope {
 
     // Footer
     Text {
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SIGN IN"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SIGN IN").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

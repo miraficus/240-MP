@@ -56,7 +56,7 @@ FocusScope {
 
     Component.onCompleted: {
         if (serverUrl === "") {
-            errorMsg = "NO SERVER URL"
+            errorMsg = qsTr("NO SERVER URL")
             failed = true
             return
         }
@@ -94,7 +94,7 @@ FocusScope {
                     polling = false
                     stop()
                     failed = true
-                    errorMsg = "CODE EXPIRED"
+                    errorMsg = qsTr("CODE EXPIRED")
                 }
             }
         }
@@ -107,7 +107,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: "Quick Connect"
+        subtitle: qsTr("Quick Connect")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125
@@ -133,7 +133,7 @@ FocusScope {
 
         Text {
             visible: !failed && code !== ""
-            text: "Enter the above code at:\n" + serverUrl + "/web/#quickconnect"
+            text: qsTr("Enter the above code at:\n%1/web/#quickconnect").arg(serverUrl)
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -148,7 +148,7 @@ FocusScope {
             visible: !failed
             anchors.horizontalCenter: parent.horizontalCenter
             Text {
-                text: approved ? "Approved"
+                text: approved ? qsTr("Approved")
                             : (code !== "" ? "Waiting"
                                             : "Connecting")
                 color: approved ? root.accentColor : root.tertiaryColor
@@ -186,7 +186,7 @@ FocusScope {
 
     // Footer
     Text {
-        text: failed ? root.hints.back + ":RETRY" : root.hints.back + ":CANCEL"
+        text: failed ? qsTr("%1:RETRY").arg(root.hints.back) : qsTr("%1:CANCEL").arg(root.hints.back)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

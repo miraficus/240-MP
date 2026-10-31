@@ -147,7 +147,7 @@ FocusScope {
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.0104167 //5
         anchors.leftMargin: root.sw * 0.125 //80
-        text: "DISPLAY COULD NOT BE HANDED OVER — RAN WITHOUT IT"
+        text: qsTr("DISPLAY COULD NOT BE HANDED OVER — RAN WITHOUT IT")
         color: root.accentColor
         font.family: root.globalFont
         font.capitalization: Font.AllUppercase
@@ -201,12 +201,12 @@ FocusScope {
         text: {
             var parts = []
             if (takeoverRoot.busy) {
-                if (takeoverRoot.downgraded) parts.push(root.hints.back + ":STOP")
+                if (takeoverRoot.downgraded) parts.push(qsTr("%1:STOP").arg(root.hints.back))
             } else {
-                parts.push(root.hints.back + ":BACK")
+                parts.push(qsTr("%1:BACK").arg(root.hints.back))
             }
             if (scriptsBackend.consoleOutput !== "")
-                parts.push(root.hints.navigate + ":SCROLL")
+                parts.push(qsTr("%1:SCROLL").arg(root.hints.navigate))
             return parts.join(" ")
         }
         color: root.tertiaryColor
@@ -236,7 +236,7 @@ FocusScope {
             Text {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: "Running..."
+                text: qsTr("Running...")
                 color: "#919191"
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase

@@ -209,7 +209,7 @@ FocusScope {
 
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -245,7 +245,7 @@ FocusScope {
 
                     Text {
                         anchors.centerIn: parent
-                        text: seasonRoot.resumeAvailable ? "RSUM \u25BA" : "PLAY \u25BA"
+                        text: seasonRoot.resumeAvailable ? qsTr("RSUM \u25BA") : qsTr("PLAY \u25BA")
                         color: focusRow === 0 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         font.pixelSize: root.sh * 0.05 //24
@@ -263,7 +263,7 @@ FocusScope {
 
                     Text {
                         id: extrasLabel
-                        text: "VIEW EXTRAS"
+                        text: qsTr("VIEW EXTRAS")
                         color: focusRow === 1 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         anchors.centerIn: parent
@@ -283,7 +283,7 @@ FocusScope {
 
                     Text {
                         id: writeCardLabel
-                        text: "WRITE NFC CARD"
+                        text: qsTr("WRITE NFC CARD")
                         color: focusRow === 4 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         anchors.centerIn: parent
@@ -398,7 +398,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
@@ -417,9 +417,9 @@ FocusScope {
         subtitleText: seasonRoot.showTitle
                       + (seasonRoot.seasonLabel() ? " - " + seasonRoot.seasonLabel() : "")
         choices: [
-            { label: seasonRoot.resumeAvailable ? "Resume Next Episode" : "Play Next Episode",
+            { label: seasonRoot.resumeAvailable ? qsTr("Resume Next Episode") : qsTr("Play Next Episode"),
               action: "next" },
-            { label: "Shuffle Episodes", action: "shuffle" }
+            { label: qsTr("Shuffle Episodes"), action: "shuffle" }
         ]
         onClosed: seasonRoot.forceActiveFocus()
         onActivated: function(action) {

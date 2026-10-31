@@ -14,6 +14,7 @@
 #include <csignal>
 
 #include "AppCore.h"
+#include "i18n/LanguageManager.h"
 #include "modules/local_files/LocalFilesBackend.h"
 #include "modules/plex/PlexBackend.h"
 #include "modules/jellyfin/JellyfinBackend.h"
@@ -124,6 +125,7 @@ int main(int argc, char *argv[]) {
               g.width(), g.height(), g.x(), g.y());
     }
 
+    LanguageManager localization(dataRoot);
     QQmlApplicationEngine engine;
 
     AppCore             appCore(appRoot, dataRoot);
@@ -177,6 +179,7 @@ int main(int argc, char *argv[]) {
     // under its context-property name, and its optional signals/slots connected by
     // introspection. The module ID lives in exactly one place per module.
     QQmlContext *ctx = engine.rootContext();
+    ctx->setContextProperty("localization", &localization);
     appCore.registerModule("com.240mp.local_files",  "localFilesBackend",  &localFiles,  ctx);
     appCore.registerModule("com.240mp.plex",         "plexBackend",        &plexBackend, ctx);
     appCore.registerModule("com.240mp.jellyfin",     "jellyfinBackend",    &jellyfinBackend, ctx);

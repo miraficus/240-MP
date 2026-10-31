@@ -85,7 +85,7 @@ FocusScope {
     function submit() {
         if (waiting) return
         if (serverUrl === "") {
-            errorMsg = "Please enter a server URL"
+            errorMsg = qsTr("Please enter a server URL")
             return
         }
         waiting = true
@@ -101,7 +101,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: "Connect to Server"
+        subtitle: qsTr("Connect to Server")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -120,7 +120,7 @@ FocusScope {
             anchors.horizontalCenter: parent.horizontalCenter
 
             Text {
-                text: "Server URL"
+                text: qsTr("Server URL")
                 color: root.secondaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -166,7 +166,7 @@ FocusScope {
 
             Text {
                 anchors.centerIn: parent
-                text: "Quick Connect"
+                text: qsTr("Quick Connect")
                 color: focusIndex === 1 ? root.surfaceColor : root.primaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -177,7 +177,7 @@ FocusScope {
         // Loading indicator
         Text {
             visible: waiting
-            text: "CONNECTING..."
+            text: qsTr("CONNECTING...")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -202,7 +202,7 @@ FocusScope {
 
     // Footer
     Text {
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":CONNECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:CONNECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

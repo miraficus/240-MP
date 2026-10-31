@@ -10,6 +10,12 @@
 #include <QNetworkInterface>
 #include <QQmlContext>
 
+namespace {
+QString moduleText(const QString &moduleId, const QString &source) {
+    return QCoreApplication::translate(moduleId.toUtf8().constData(), source.toUtf8().constData());
+}
+}
+
 AppCore::AppCore(const QString &appRoot, const QString &dataRoot, QObject *parent)
     : QObject(parent), m_appRoot(appRoot), m_dataRoot(dataRoot)
 {
@@ -105,7 +111,7 @@ void AppCore::scan_for_modules() {
         // entry_point is a path relative to APP_ROOT
         QString entryPoint = QStringLiteral("modules/%1/%2").arg(m.folder, m.entryQml);
         QVariantMap entry;
-        entry["name"]        = m.name;
+        entry["name"]        = moduleText(m.id, m.name);
         entry["entry_point"] = entryPoint;
         displayData.append(entry);
         qDebug("[AppCore] Module: %s -> %s", qPrintable(m.name), qPrintable(entryPoint));
@@ -230,7 +236,7 @@ QVariant AppCore::get_module_info(const QString &moduleId) {
             QString iconPath = QStringLiteral("%1/modules/%2/%3")
                                    .arg(m_appRoot, m.folder, m.iconRel);
             QString iconUrl = QUrl::fromLocalFile(iconPath).toString();
-            return QVariantMap{{"name", m.name}, {"icon", iconUrl}};
+            return QVariantMap{{"name", moduleText(m.id, m.name)}, {"icon", iconUrl}};
         }
     }
     return QVariantMap{};
@@ -254,8 +260,22 @@ QString AppCore::module_entry_point(const QString &moduleId) const {
 
 QVariant AppCore::get_module_settings_schema(const QString &moduleId) {
     for (const auto &m : m_modules) {
-        if (m.id == moduleId)
-            return m.settings;
+        if (m.id == moduleId) {
+            QVariantList translated;
+            for (const auto &value : m.settings) {
+                QVariantMap setting = value.toMap();
+                for (const auto &field : {"label", "description"}) {
+                    if (setting.contains(field)) setting[field] = moduleText(m.id, setting[field].toString());
+                }
+                // Translate only displayed labels. options/default remain stable config values.
+                QVariantMap optionLabels;
+                for (const auto &option : setting.value("options").toList())
+                    optionLabels[option.toString()] = moduleText(m.id, option.toString());
+                setting["option_labels"] = optionLabels;
+                translated.append(setting);
+            }
+            return translated;
+        }
     }
     return QVariantList{};
 }
@@ -352,7 +372,7 @@ QVariant AppCore::get_installed_modules() {
     for (const auto &m : m_modules) {
         result.append(QVariantMap{
             {"id",           m.id},
-            {"name",         m.name},
+            {"name",         moduleText(m.id, m.name)},
             {"has_settings", !m.settings.isEmpty()},
             {"enabled",      isModuleEnabled(m, modulesConfig)}
         });

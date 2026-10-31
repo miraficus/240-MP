@@ -1,3 +1,4 @@
+local T = dofile(mp.get_script_directory() .. "/mpv-i18n.lua")
 local assdraw = require 'mp.assdraw'
 
 local menu_visible = false
@@ -34,9 +35,9 @@ end
 -- blanks the video (Pi 3 overlay path with 1080p Playback ON).
 local buttons = {}
 if mp.get_opt("hide-crop") ~= "1" then
-    buttons[#buttons + 1] = { label = "CROP", action = function() mp.command("no-osd cycle-values panscan 0 1") end }
+    buttons[#buttons + 1] = { label = T("CROP"), action = function() mp.command("no-osd cycle-values panscan 0 1") end }
 end
-buttons[#buttons + 1] = { label = "STOP", action = function() mp.command("quit") end }
+buttons[#buttons + 1] = { label = T("STOP"), action = function() mp.command("quit") end }
 
 local function draw_menu()
     local ass = assdraw.ass_new()

@@ -25,12 +25,12 @@ FocusScope {
     // it's yes/no for that case.
     property bool autostartSession: false
     property var quitOptions: settingsRoot.autostartSession
-        ? [{ label: "Power Off",        action: "quit"     },
-           { label: "Reboot",           action: "reboot"   },
-           { label: "Exit to Terminal", action: "terminal" },
-           { label: "Cancel",           action: "cancel"   }]
-        : [{ label: "Yes", action: "quit" },
-           { label: "No",  action: "cancel" }]
+        ? [{ label: qsTr("Power Off"),        action: "quit"     },
+           { label: qsTr("Reboot"),           action: "reboot"   },
+           { label: qsTr("Exit to Terminal"), action: "terminal" },
+           { label: qsTr("Cancel"),           action: "cancel"   }]
+        : [{ label: qsTr("Yes"), action: "quit" },
+           { label: qsTr("No"),  action: "cancel" }]
 
     function buildModel() {
         var cfg = appCore.get_settings()
@@ -39,6 +39,21 @@ FocusScope {
         autostartSession = appCore.isAutostartSession()
 
         var items = []
+
+        // Keep language IDs separate from the labels shown in this picker.
+        var languageOptions = localization.languages
+        var languageLabels = []
+        var languageIds = []
+        var selectedLanguage = languageOptions[0].label
+        for (var li = 0; li < languageOptions.length; li++) {
+            languageLabels.push(languageOptions[li].label)
+            languageIds.push(languageOptions[li].id)
+            if (languageOptions[li].id === (appSettings.language || "auto"))
+                selectedLanguage = languageOptions[li].label
+        }
+        items.push({type: "list_single", key: "language", label: qsTr("Language"),
+                    options: languageLabels, values: languageIds, value: selectedLanguage,
+                    description: qsTr("Restart the application to apply the selected language."), moduleId: ""})
 
         // APPLICATION section
         var colorOpts = ["Video 1","Late Night","Synthwave","Terminal","T-120","Amber","Kinescope","SMPTE ECR 1-1978"]
@@ -55,10 +70,10 @@ FocusScope {
         items.push({
             type: "list_single",
             key: "color_scheme",
-            label: "Color Scheme",
+            label: qsTr("Color Scheme"),
             options: colorOpts,
             value: appSettings["color_scheme"] || "Video 1",
-            description: "Choose your prefered color scheme\nPlease see the wiki for details on adding a custom one",
+            description: qsTr("Choose your prefered color scheme\nPlease see the wiki for details on adding a custom one"),
             moduleId: ""
         })
 
@@ -79,11 +94,11 @@ FocusScope {
         items.push({
             type: "list_single",
             key: "startup_module",
-            label: "Start on Module",
+            label: qsTr("Start on Module"),
             options: moduleOpts,
             values: moduleVals,
             value: startupValue,
-            description: "Directly launch into a specific module on startup",
+            description: qsTr("Directly launch into a specific module on startup"),
             moduleId: ""
         })
 
@@ -94,10 +109,10 @@ FocusScope {
             items.push({
                 type: "list_single",
                 key: "smooth_playback",
-                label: "1080p Playback",
+                label: qsTr("1080p Playback"),
                 options: ["On", "Off"],
                 value: appSettings["smooth_playback"] || "On",
-                description: "[ON] Enable 1080p content playback, crop will not function\n[OFF] Enable crop, 1080p content playback will stutter",
+                description: qsTr("[ON] Enable 1080p content playback, crop will not function\n[OFF] Enable crop, 1080p content playback will stutter"),
                 moduleId: ""
             })
         }
@@ -107,10 +122,10 @@ FocusScope {
         items.push({
             type: "list_single",
             key: "auto_crop",
-            label: "Auto Crop",
+            label: qsTr("Auto Crop"),
             options: ["Off", "On"],
             value: appSettings["auto_crop"] || "Off",
-            description: "[ON] Video starts cropped to fill screen\n[OFF] Video starts at its original aspect ratio",
+            description: qsTr("[ON] Video starts cropped to fill screen\n[OFF] Video starts at its original aspect ratio"),
             moduleId: ""
         })
 
@@ -124,10 +139,10 @@ FocusScope {
         items.push({
             type: "list_single",
             key: "video_output_levels",
-            label: "Video Levels",
+            label: qsTr("Video Levels"),
             options: ["Auto", "Limited", "Full"],
             value: appSettings["video_output_levels"] || "Auto",
-            description: "Match the color range your display expects\n[LIMITED] If blacks crush  [FULL] If blacks look gray",
+            description: qsTr("Match the color range your display expects\n[LIMITED] If blacks crush  [FULL] If blacks look gray"),
             moduleId: ""
         })
 
@@ -136,10 +151,10 @@ FocusScope {
         items.push({
             type: "list_single",
             key: "screensaver_timeout",
-            label: "Screen Saver",
+            label: qsTr("Screen Saver"),
             options: ["OFF", "30", "60", "120"],
             value: appSettings["screensaver_timeout"] || "OFF",
-            description: "Prevent CRT burn-in after seconds of inactivity or pause",
+            description: qsTr("Prevent CRT burn-in after seconds of inactivity or pause"),
             moduleId: ""
         })
 
@@ -150,7 +165,7 @@ FocusScope {
         }
 
         if (hasModuleSettings) {
-            items.push({ type: "section", label: "Modules" })
+            items.push({ type: "section", label: qsTr("Modules") })
             for (var j = 0; j < installedModules.length; j++) {
                 var m = installedModules[j]
                 if (m.has_settings) {
@@ -160,20 +175,20 @@ FocusScope {
         }
 
         // SYSTEM section
-        items.push({ type: "section", label: "Application" })
+        items.push({ type: "section", label: qsTr("Application") })
         items.push({
             type: "submenu",
             key: "remap_controls",
-            label: "Controls",
+            label: qsTr("Controls"),
             moduleId: ""
         })
         items.push({
             type: "submenu",
             key: "software_update",
-            label: "Update",
+            label: qsTr("Update"),
             moduleId: ""
         })
-        items.push({ type: "quit", label: "Quit" })
+        items.push({ type: "quit", label: qsTr("Quit") })
 
         settingsItems = items
 
@@ -189,6 +204,19 @@ FocusScope {
             }
         }
         settingsList.positionViewAtIndex(settingsList.currentIndex, ListView.Contain)
+    }
+
+    // Localize presentation only; navigation and saved values use the originals.
+    function displaySettingValue(row) {
+        var value = row.value || ""
+        if (row.key === "smooth_playback" || row.key === "auto_crop")
+            return value === "On" ? qsTr("On") : qsTr("Off")
+        if (row.key === "video_output_levels")
+            return ({Auto: qsTr("Auto"), Limited: qsTr("Limited"), Full: qsTr("Full")})[value] || value
+        if (row.key === "screensaver_timeout" && value === "OFF") return qsTr("OFF")
+        if (row.key === "startup_module" && value === "None") return qsTr("None")
+        if (row.key === "color_scheme" && value === "Custom") return qsTr("Custom")
+        return value
     }
 
     function firstSelectableAfter(idx) {
@@ -210,7 +238,7 @@ FocusScope {
     // Header
     AppBar {
         iconSource: "../../assets/images/settings.svg"
-        title: "Settings"
+        title: qsTr("Settings")
         subtitle: root.appVersion
         anchors.top: parent.top
         anchors.left: parent.left
@@ -379,7 +407,7 @@ FocusScope {
 
                     Text {
                         visible: modelData.type === "list_single"
-                        text: "\u25C4"
+                        text: qsTr("\u25C4")
                         color: settingsList.currentIndex === index ? root.surfaceColor : root.tertiaryColor
                         font.family: root.globalFont
                         anchors.verticalCenter: parent.verticalCenter
@@ -389,7 +417,7 @@ FocusScope {
                     }
                     Text {
                         visible: modelData.type === "list_single"
-                        text: modelData.value || ""
+                        text: settingsRoot.displaySettingValue(modelData)
                         color: settingsList.currentIndex === index ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         font.capitalization: Font.AllUppercase
@@ -402,7 +430,7 @@ FocusScope {
                     }
                     Text {
                         visible: modelData.type === "submenu" || modelData.type === "list_single"
-                        text: "\u25BA"
+                        text: qsTr("\u25BA")
                         color: settingsList.currentIndex === index ? root.surfaceColor : root.tertiaryColor
                         font.family: root.globalFont
                         anchors.verticalCenter: parent.verticalCenter
@@ -446,7 +474,7 @@ FocusScope {
     // --- FOOTER ---
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.change + ":CHANGE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:CHANGE %4:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.change).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
@@ -492,7 +520,7 @@ FocusScope {
                 spacing: root.sh * 0.05 //24
 
                 Text {
-                    text: "REALLY QUIT?"
+                    text: qsTr("REALLY QUIT?")
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16
@@ -531,7 +559,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16

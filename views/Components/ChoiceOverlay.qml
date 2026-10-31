@@ -128,8 +128,7 @@ FocusScope {
             }
 
             Text {
-                text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE "
-                      + root.hints.select + ":SELECT"
+                text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                 color: root.tertiaryColor
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0333333 //16

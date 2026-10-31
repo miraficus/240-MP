@@ -16,3 +16,7 @@ Thumbs.db
 /.appimage-tools
 /.mpv-build
 /*.AppImage
+
+# Translation build outputs
+/build-i18n-tests
+*.qm

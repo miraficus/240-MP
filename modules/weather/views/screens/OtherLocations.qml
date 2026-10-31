@@ -22,7 +22,7 @@ Item {
         id: title
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        text: "OTHER LOCATIONS"
+        text: qsTr("OTHER LOCATIONS")
         color: root.primaryColor
         font.family: root.globalFont
         font.pixelSize: screen.lineSize
@@ -37,14 +37,14 @@ Item {
         height: screen.lineSize
 
         Text {
-            width: screen.nameWidth; text: "LOCATION"
+            width: screen.nameWidth; text: qsTr("LOCATION")
             color: root.accentColor
             font.family: root.globalFont
             font.pixelSize: screen.headerSize
         }
         Item { width: root.sw * 0.0140625; height: 1 }
         Text {
-            width: screen.wxWidth; text: "CONDITIONS"
+            width: screen.wxWidth; text: qsTr("CONDITIONS")
             color: root.accentColor
             font.family: root.globalFont
             font.pixelSize: screen.headerSize

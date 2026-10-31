@@ -18,12 +18,12 @@ FocusScope {
     property var navListState: ({})
 
     readonly property var actions: [
-        { id: "up",     label: "Up" },
-        { id: "down",   label: "Down" },
-        { id: "left",   label: "Left" },
-        { id: "right",  label: "Right" },
-        { id: "select", label: "Select / OK" },
-        { id: "back",   label: "Back" }
+        { id: "up",     label: qsTr("Up") },
+        { id: "down",   label: qsTr("Down") },
+        { id: "left",   label: qsTr("Left") },
+        { id: "right",  label: qsTr("Right") },
+        { id: "select", label: qsTr("Select / OK") },
+        { id: "back",   label: qsTr("Back") }
     ]
 
     property var rows: []
@@ -53,7 +53,7 @@ FocusScope {
                 value: hasCustom ? ("default + " + inputManager.keyDisplayName(stored)) : "default"
             })
         }
-        list.push({ id: "reset", label: "Reset to Defaults", isReset: true })
+        list.push({ id: "reset", label: qsTr("Reset to Defaults"), isReset: true })
         rows = list
         if (rowList.currentIndex < 0 || rowList.currentIndex >= rows.length)
             rowList.currentIndex = 0
@@ -120,7 +120,7 @@ FocusScope {
     // Header
     AppBar {
         iconSource: "../../assets/images/keyboard.svg"
-        title: "Controls"
+        title: qsTr("Controls")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -213,7 +213,7 @@ FocusScope {
         height: root.sh * 0.0583333 //28
         clip: true
         Text {
-            text: "Map one additional button for each action\n(the default button will continue to function)"
+            text: qsTr("Map one additional button for each action\n(the default button will continue to function)")
             color: root.primaryColor
             font.family: root.globalFont
             font.pixelSize: root.sh * 0.0291667 //14
@@ -228,7 +228,7 @@ FocusScope {
     // --- FOOTER ---
     Text {
         visible: !remapRoot.capturing
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SET"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SET").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
@@ -273,7 +273,7 @@ FocusScope {
                 anchors.horizontalCenter: parent.horizontalCenter
             }
             Text {
-                text: root.hints.back + ":CANCEL"
+                text: qsTr("%1:CANCEL").arg(root.hints.back)
                 color: root.tertiaryColor
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0333333 //16

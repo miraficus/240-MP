@@ -390,7 +390,7 @@ FocusScope {
     // Loading Indicator
     Text {
         visible: !detail
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -424,7 +424,7 @@ FocusScope {
 
                 Text {
                     anchors.centerIn: parent
-                    text: (detail && detail.viewOffset > 0) ? "RSUM \u25BA" : "PLAY \u25BA"
+                    text: (detail && detail.viewOffset > 0) ? qsTr("RSUM \u25BA") : qsTr("PLAY \u25BA")
                     color: focusRow === 0 ? root.surfaceColor : root.primaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.05 //24
@@ -509,7 +509,7 @@ FocusScope {
         // Playback Settings
         Text {
             id: pbSettingsLabel
-            text: "Playback Settings:"
+            text: qsTr("Playback Settings:")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -536,7 +536,7 @@ FocusScope {
             }
 
             Text {
-                text: "Audio"
+                text: qsTr("Audio")
                 color: focusRow === 1 ? root.surfaceColor : root.primaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -553,7 +553,7 @@ FocusScope {
                 spacing: root.sw * 0.00625 //4
 
                 Text {
-                    text: "\u25C4"
+                    text: qsTr("\u25C4")
                     color: focusRow === 1 ? root.surfaceColor : root.tertiaryColor
                     font.family: root.globalFont
                     anchors.verticalCenter: parent.verticalCenter
@@ -592,7 +592,7 @@ FocusScope {
                     }
                 }
                 Text {
-                    text: "\u25BA"
+                    text: qsTr("\u25BA")
                     color: focusRow === 1 ? root.surfaceColor : root.tertiaryColor
                     font.family: root.globalFont
                     anchors.verticalCenter: parent.verticalCenter
@@ -616,7 +616,7 @@ FocusScope {
             }
 
             Text {
-                text: "Subtitles"
+                text: qsTr("Subtitles")
                 color: focusRow === 2 ? root.surfaceColor : root.primaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -633,7 +633,7 @@ FocusScope {
                 spacing: root.sw * 0.00625 //4
 
                 Text {
-                    text: "\u25C4"
+                    text: qsTr("\u25C4")
                     color: focusRow === 2 ? root.surfaceColor : root.tertiaryColor
                     font.family: root.globalFont
                     anchors.verticalCenter: parent.verticalCenter
@@ -676,7 +676,7 @@ FocusScope {
                     }
                 }
                 Text {
-                    text: "\u25BA"
+                    text: qsTr("\u25BA")
                     color: focusRow === 2 ? root.surfaceColor : root.tertiaryColor
                     font.family: root.globalFont
                     anchors.verticalCenter: parent.verticalCenter
@@ -689,7 +689,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.change + ":CHANGE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:CHANGE %4:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.change).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
@@ -707,7 +707,7 @@ FocusScope {
         z: 100
 
         Text {
-            text: "LOADING..."
+            text: qsTr("LOADING...")
             color: root.tertiaryColor
             font.family: root.globalFont
             anchors.centerIn: parent
@@ -715,7 +715,7 @@ FocusScope {
         }
 
         Text {
-            text: root.hints.back + ":CANCEL"
+            text: qsTr("%1:CANCEL").arg(root.hints.back)
             color: root.tertiaryColor
             font.family: root.globalFont
             anchors.horizontalCenter: parent.horizontalCenter

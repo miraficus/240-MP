@@ -61,7 +61,7 @@ FocusScope {
 
     AppBar {
         iconSource: "../../assets/images/settings.svg"
-        title: "Settings"
+        title: qsTr("Settings")
         subtitle: currentBrowsePath
         anchors.top: parent.top
         anchors.left: parent.left
@@ -137,7 +137,7 @@ FocusScope {
     }
 
     Text {
-        text: root.hints.back + ":CANCEL  " + root.hints.navigate + ":NAVIGATE  " + root.hints.select + ":SELECT"
+        text: qsTr("%1:CANCEL  %2:NAVIGATE  %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

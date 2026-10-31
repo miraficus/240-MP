@@ -87,7 +87,7 @@ FocusScope {
     // Loading Indicator
     Text {
         visible: libraries.length === 0 && browseRoot.errorMsg === ""
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -143,7 +143,7 @@ FocusScope {
             if (lib.key === "continue_watching") {
                 browseRoot.navigateTo("Items.qml", {
                     listType: "continue_watching",
-                    title: "CONTINUE WATCHING",
+                    title: qsTr("CONTINUE WATCHING"),
                     libraryName: lib.title
                 }, { currentIndex: libraryList.currentIndex })
             } else if (lib.key === "live_tv") {
@@ -218,8 +218,8 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
-              + (browseRoot.canSwitchServer ? " " + root.hints.change + ":SERVER" : "")
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
+              + (browseRoot.canSwitchServer ? " " + qsTr("%1:SERVER").arg(root.hints.change) : "")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

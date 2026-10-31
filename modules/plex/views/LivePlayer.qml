@@ -133,7 +133,7 @@ FocusScope {
         color: "black"
 
         Text {
-            text: "TUNING " + ((livePlayerRoot.channel.number
+            text: qsTr("TUNING ") + ((livePlayerRoot.channel.number
                                  ? livePlayerRoot.channel.number + "  " : "")
                                + (livePlayerRoot.channel.title || "")) + "..."
             color: "white"

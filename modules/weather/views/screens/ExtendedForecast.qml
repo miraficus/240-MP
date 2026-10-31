@@ -21,7 +21,7 @@ Item {
         id: title
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        text: "EXTENDED FORECAST"
+        text: qsTr("EXTENDED FORECAST")
         color: root.primaryColor
         font.family: root.globalFont
         font.pixelSize: screen.lineSize
@@ -117,13 +117,13 @@ Item {
                     spacing: root.sh * 0.0138021 //6.625
 
                     Text {
-                        text: "LO: " + (modelData.lo || "")
+                        text: qsTr("LO: %1").arg((modelData.lo || ""))
                         color: root.primaryColor
                         font.family: root.globalFont
                         font.pixelSize: screen.lineSize
                     }
                     Text {
-                        text: "HI: " + (modelData.hi || "")
+                        text: qsTr("HI: %1").arg((modelData.hi || ""))
                         color: root.primaryColor
                         font.family: root.globalFont
                         font.pixelSize: screen.lineSize

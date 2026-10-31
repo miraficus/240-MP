@@ -205,7 +205,7 @@ FocusScope {
     // Loading / empty / error states
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -223,7 +223,7 @@ FocusScope {
     }
     Text {
         visible: !isLoading && errorMessage === "" && items.length === 0
-        text: "NO ITEMS FOUND"
+        text: qsTr("NO ITEMS FOUND")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -439,8 +439,8 @@ FocusScope {
     Text {
         id: footer
         text: showLetterNav
-              ? root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.browse + ":BROWSE " + root.hints.select + ":SELECT"
-              : root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+              ? qsTr("%1:BACK %2:NAVIGATE %3:BROWSE %4:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.browse).arg(root.hints.select)
+              : qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

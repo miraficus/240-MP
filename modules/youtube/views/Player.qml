@@ -136,7 +136,7 @@ FocusScope {
             // yt-dlp missing/outdated or an unplayable stream surfaces as mpv exit
             // code 2 before any position event — show the error instead of leaving.
             if (reason === "failed" && !playbackStarted) {
-                playerRoot.errorMessage = "PLAYBACK FAILED\n\nPLEASE CHECK THAT YT-DLP IS INSTALLED AND UP TO DATE"
+                playerRoot.errorMessage = qsTr("PLAYBACK FAILED\n\nPLEASE CHECK THAT YT-DLP IS INSTALLED AND UP TO DATE")
                 return
             }
             var pos = lastKnownPositionMs || finalPositionMs
@@ -185,7 +185,7 @@ FocusScope {
         // takes over). Hidden once the first position update arrives, or while
         // the resume prompt is up.
         Text {
-            text: "LOADING..."
+            text: qsTr("LOADING...")
             color: "white"
             font.family: root.globalFont
             anchors.centerIn: parent
@@ -209,7 +209,7 @@ FocusScope {
                 font.pixelSize: root.sh * 0.0375 //18
             }
             Text {
-                text: root.hints.back + ":BACK " + root.hints.select + ":RETRY"
+                text: qsTr("%1:BACK %2:RETRY").arg(root.hints.back).arg(root.hints.select)
                 color: "#919191"
                 font.family: root.globalFont
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -236,7 +236,7 @@ FocusScope {
                 spacing: root.sh * 0.05
 
                 Text {
-                    text: "RESUME PLAYBACK?"
+                    text: qsTr("RESUME PLAYBACK?")
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333
@@ -278,7 +278,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333

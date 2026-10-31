@@ -19,7 +19,7 @@ Item {
 
     Text {
         id: title
-        text: "CURRENTLY IN " + screen.locationName
+        text: qsTr("CURRENTLY IN %1").arg(screen.locationName)
         color: root.primaryColor
         font.family: root.globalFont
         font.pixelSize: screen.lineSize
@@ -82,31 +82,31 @@ Item {
         spacing: screen.lineGap
 
         Text {
-            text: "HUMIDITY: " + (screen.wx.humidity || "")
+            text: qsTr("HUMIDITY: %1").arg((screen.wx.humidity || ""))
             color: root.primaryColor
             font.family: root.globalFont
             font.pixelSize: screen.lineSize
         }
         Text {
-            text: "DEWPOINT: " + (screen.wx.dewPoint || "")
+            text: qsTr("DEWPOINT: %1").arg((screen.wx.dewPoint || ""))
             color: root.primaryColor
             font.family: root.globalFont
             font.pixelSize: screen.lineSize
         }
         Text {
-            text: "PRESSURE: " + (screen.wx.pressure || "")
+            text: qsTr("PRESSURE: %1").arg((screen.wx.pressure || ""))
             color: root.primaryColor
             font.family: root.globalFont
             font.pixelSize: screen.lineSize
         }
         Text {
-            text: "WIND: " + (screen.wx.wind || "")
+            text: qsTr("WIND: %1").arg((screen.wx.wind || ""))
             color: root.primaryColor
             font.family: root.globalFont
             font.pixelSize: screen.lineSize
         }
         Text {
-            text: "VISIBILITY: " + (screen.wx.visibility || "")
+            text: qsTr("VISIBILITY: %1").arg((screen.wx.visibility || ""))
             color: root.primaryColor
             font.family: root.globalFont
             font.pixelSize: screen.lineSize

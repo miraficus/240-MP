@@ -158,8 +158,8 @@ FocusScope {
 
     // Footer
     Text {
-        text: (consoleRoot.running ? root.hints.back + ":STOP " : root.hints.back + ":BACK ")
-              + root.hints.navigate + ":SCROLL"
+        text: (consoleRoot.running ? qsTr("%1:STOP ").arg(root.hints.back) : qsTr("%1:BACK ").arg(root.hints.back))
+              + qsTr("%1:SCROLL").arg(root.hints.navigate)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

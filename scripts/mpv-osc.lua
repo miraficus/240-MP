@@ -1,3 +1,4 @@
+local T = dofile(mp.get_script_directory() .. "/mpv-i18n.lua")
 local assdraw = require 'mp.assdraw'
 local mp_utils = require 'mp.utils'
 
@@ -38,12 +39,12 @@ local function get_audio_str()
     -- Transcoded stream: read track info passed explicitly from QML
     local transcode_audio = mp.get_opt("transcode-audio")
     if transcode_audio and transcode_audio ~= "" then
-        if transcode_audio == "Off" then return "(NONE)" end
+        if transcode_audio == "Off" then return T("(NONE)") end
         return (transcode_audio:gsub("_", " ")):upper()
     end
 
     local id = mp.get_property_number("current-tracks/audio/id", 0)
-    if id == 0 then return "(NONE)" end
+    if id == 0 then return T("(NONE)") end
     local title    = (mp.get_property("current-tracks/audio/title", "") or ""):upper()
     local lang     = (mp.get_property("current-tracks/audio/lang",  "") or ""):upper()
     local codec    = (mp.get_property("current-tracks/audio/codec", "") or ""):upper()
@@ -63,12 +64,12 @@ local function get_sub_str()
     -- the selected track's name (spaces as underscores) for display.
     local transcode_sub = mp.get_opt("transcode-sub")
     if transcode_sub and transcode_sub ~= "" then
-        if transcode_sub == "Off" then return "(NONE)" end
+        if transcode_sub == "Off" then return T("(NONE)") end
         return (transcode_sub:gsub("_", " ")):upper()
     end
 
     local id = mp.get_property_number("current-tracks/sub/id", 0)
-    if id == 0 then return "(NONE)" end
+    if id == 0 then return T("(NONE)") end
     -- External sidecar with an app-provided friendly name (e.g. Jellyfin): use it
     -- instead of mpv's URL-derived title.
     local ext = mp.get_property("current-tracks/sub/external-filename", "") or ""
@@ -135,16 +136,16 @@ local hide_crop = mp.get_opt("hide-crop") == "1"
 local function build_left_btns(has_sub, has_pl, bar_w)
     local btns = {}
     if skip_active then
-        btns[#btns + 1] = {label="SKIP", width=math.floor(bar_w * 0.090625), action=function()
+        btns[#btns + 1] = {label=T("SKIP"), width=math.floor(bar_w * 0.090625), action=function()
             mp.commandv("script-message", "skip-segment")
         end}
     end
-    btns[#btns + 1] = {label="AUDIO", width=math.floor(bar_w * 0.109375), action=btn_actions[1]}
+    btns[#btns + 1] = {label=T("AUDIO"), width=math.floor(bar_w * 0.109375), action=btn_actions[1]}
     if has_sub then
-        table.insert(btns, {label="SUBTITLE", width=math.floor(bar_w * 0.15625), action=btn_actions[2]})
+        table.insert(btns, {label=T("SUBTITLE"), width=math.floor(bar_w * 0.15625), action=btn_actions[2]})
     end
     if not hide_crop then
-        table.insert(btns, {label="CROP", width=math.floor(bar_w * 0.090625), action=btn_actions[3]})
+        table.insert(btns, {label=T("CROP"), width=math.floor(bar_w * 0.090625), action=btn_actions[3]})
     end
     if has_pl then
         table.insert(btns, {label="<", width=math.floor(bar_w * 0.055), action=btn_actions[5]})
@@ -230,9 +231,9 @@ local function draw_menu()
     local info_lh  = math.floor(info_fs * 1.5)
     local info_y   = math.floor(wh * 0.125)
 
-    draw_text(ass, lm, info_y, 4, "AUDIO: " .. get_audio_str(), info_fs, C_WHITE, A_OPAQUE)
+    draw_text(ass, lm, info_y, 4, T("AUDIO: ") .. get_audio_str(), info_fs, C_WHITE, A_OPAQUE)
     if has_sub then
-        draw_text(ass, lm, info_y + info_lh, 4, "SUBTITLE: " .. get_sub_str(),  info_fs, C_WHITE, A_OPAQUE)
+        draw_text(ass, lm, info_y + info_lh, 4, T("SUBTITLE: ") .. get_sub_str(),  info_fs, C_WHITE, A_OPAQUE)
     end
 
     -- ── Row 1: Time text ──────────────────────────────────────────
@@ -284,7 +285,7 @@ local function draw_menu()
 
     draw_rect(ass, stop_x, btn_y, stop_w, btn_h, fill_c, fill_a, border, C_WHITE)
     draw_text(ass, stop_x + stop_w / 2, btn_y + btn_h / 2, 5,
-              "STOP", fs, text_c, A_OPAQUE)
+              T("STOP"), fs, text_c, A_OPAQUE)
 
     mp.set_osd_ass(ww, wh, ass.text)
 end

@@ -148,7 +148,7 @@ FocusScope {
     Text {
         anchors.centerIn: parent
         visible: !weatherBackend.hasData
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.primaryColor
         font.family: root.globalFont
         font.pixelSize: root.sh * 0.05 //24

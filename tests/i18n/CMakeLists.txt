@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.21)
+project(i18n_tests LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Qml Test QuickTest LinguistTools)
+add_executable(i18n_backend_test tst_backend.cpp ../../src/AppCore.cpp ../../src/i18n/LanguageManager.cpp)
+target_link_libraries(i18n_backend_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Test)
+target_compile_definitions(i18n_backend_test PRIVATE SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../..")
+add_executable(i18n_navigation_test quicktest.cpp ../../src/i18n/LanguageManager.cpp)
+target_link_libraries(i18n_navigation_test PRIVATE Qt6::QuickTest)
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/240mp_cs.qm"
+    COMMAND Qt6::lrelease "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/240mp_cs.ts" -qm "${CMAKE_CURRENT_BINARY_DIR}/240mp_cs.qm"
+    DEPENDS fixtures/240mp_cs.ts VERBATIM)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/240mp_cs.qm" PROPERTIES QT_RESOURCE_ALIAS "240mp_cs.qm")
+qt_add_resources(i18n_backend_test backend_catalog PREFIX "/i18n" FILES "${CMAKE_CURRENT_BINARY_DIR}/240mp_cs.qm")
+qt_add_resources(i18n_navigation_test navigation_catalog PREFIX "/i18n" FILES "${CMAKE_CURRENT_BINARY_DIR}/240mp_cs.qm")

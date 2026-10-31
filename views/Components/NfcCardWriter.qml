@@ -66,14 +66,14 @@ FocusScope {
     // drives behaviour — never the label text, which is free to be reworded.
     function choices() {
         if (phase === "replace")
-            return [{ label: "Change this card", action: "write" },
-                    { label: "Cancel",           action: "cancel" }]
+            return [{ label: qsTr("Change this card"), action: "write" },
+                    { label: qsTr("Cancel"),           action: "cancel" }]
         if (offerShuffle)
-            return [{ label: "Write card (" + orderedLabel + ")", action: "write" },
-                    { label: "Write card (" + shuffleLabel + ")", action: "shuffle" },
-                    { label: "Cancel",                            action: "cancel" }]
-        return [{ label: "Write card", action: "write" },
-                { label: "Cancel",     action: "cancel" }]
+            return [{ label: qsTr("Write card (%1)").arg(orderedLabel), action: "write" },
+                    { label: qsTr("Write card (%1)").arg(shuffleLabel), action: "shuffle" },
+                    { label: qsTr("Cancel"),                            action: "cancel" }]
+        return [{ label: qsTr("Write card"), action: "write" },
+                { label: qsTr("Cancel"),     action: "cancel" }]
     }
 
     function commit() {
@@ -156,7 +156,7 @@ FocusScope {
                 width: parent.width
                 spacing: root.sh * 0.0166667 //8
                 Text {
-                    text: writerRoot.phase === "armed"    ? "TAP A CARD FOR..."
+                    text: writerRoot.phase === "armed"    ? qsTr("TAP A CARD FOR...")
                         : writerRoot.phase === "replace"  ? "THIS CARD PLAYS \"" + writerRoot.existingTitle + "\". CHANGE TO..."
                         : writerRoot.phase === "done"     ? "CARD WRITTEN FOR..."
                         : writerRoot.phase === "failed"   ? "COULD NOT WRITE CARD"
@@ -218,11 +218,10 @@ FocusScope {
 
             Text {
                 text: writerRoot.phase === "armed"
-                        ? root.hints.back + ":CANCEL"
+                        ? qsTr("%1:CANCEL").arg(root.hints.back)
                         : (writerRoot.phase === "done" || writerRoot.phase === "failed")
-                          ? root.hints.select + ":DONE"
-                          : root.hints.back + ":CANCEL " + root.hints.navigate + ":NAVIGATE "
-                            + root.hints.select + ":SELECT"
+                          ? qsTr("%1:DONE").arg(root.hints.select)
+                          : qsTr("%1:CANCEL %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                 color: root.tertiaryColor
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0333333

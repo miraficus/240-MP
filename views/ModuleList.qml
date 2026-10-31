@@ -40,7 +40,7 @@ FocusScope {
         spacing: root.sh * 0.0333333 //16
         visible: menuList.count === 0
         Text {
-            text: "No modules enabled"
+            text: qsTr("No modules enabled")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -49,7 +49,7 @@ FocusScope {
             font.pixelSize: root.sh * 0.05 //24
         }
         Text {
-            text: "Please enable one in settings"
+            text: qsTr("Please enable one in settings")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -172,7 +172,7 @@ FocusScope {
     // --- FOOTER ---
     Text {
         id: footer
-        text: root.hints.back + ":SETTINGS " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:SETTINGS %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor;
         font.family: root.globalFont;
         anchors.bottom: parent.bottom

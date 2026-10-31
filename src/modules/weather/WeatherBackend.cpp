@@ -503,10 +503,10 @@ void WeatherBackend::onSettingChanged(const QString &moduleId, const QString &ke
 
 void WeatherBackend::getDisplays() {
     emit dynamicOptionsReady(QStringLiteral("displays"), QVariantList{
-        QVariantMap{ { "id", "current"  }, { "label", "CURRENT CONDITIONS" } },
-        QVariantMap{ { "id", "extended" }, { "label", "EXTENDED FORECAST"  } },
-        QVariantMap{ { "id", "others"   }, { "label", "OTHER LOCATIONS"    } },
-        QVariantMap{ { "id", "almanac"  }, { "label", "ALMANAC"            } },
+        QVariantMap{ { "id", "current"  }, { "label", tr("CURRENT CONDITIONS") } },
+        QVariantMap{ { "id", "extended" }, { "label", tr("EXTENDED FORECAST")  } },
+        QVariantMap{ { "id", "others"   }, { "label", tr("OTHER LOCATIONS")    } },
+        QVariantMap{ { "id", "almanac"  }, { "label", tr("ALMANAC")            } },
     });
 }
 

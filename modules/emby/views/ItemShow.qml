@@ -147,7 +147,7 @@ FocusScope {
 
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -180,7 +180,7 @@ FocusScope {
 
                 Text {
                     anchors.centerIn: parent
-                    text: (item.viewOffset && item.viewOffset > 0) ? "RSUM ►" : "PLAY ►"
+                    text: (item.viewOffset && item.viewOffset > 0) ? qsTr("RSUM ►") : qsTr("PLAY ►")
                     color: focusRow === 0 ? root.surfaceColor : root.primaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.05 //24
@@ -260,7 +260,7 @@ FocusScope {
         Text {
             id: seasonListLabel
             anchors.top: showDetails.bottom
-            text: "Seasons:"
+            text: qsTr("Seasons:")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -340,7 +340,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

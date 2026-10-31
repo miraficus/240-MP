@@ -85,7 +85,7 @@ FocusScope {
     }
 
     Text {
-        text: root.hints.back + ":BACK"
+        text: qsTr("%1:BACK").arg(root.hints.back)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

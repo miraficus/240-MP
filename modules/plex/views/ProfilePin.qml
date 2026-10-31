@@ -119,7 +119,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: "Enter PIN"
+        subtitle: qsTr("Enter PIN")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -175,7 +175,7 @@ FocusScope {
 
         Text {
             visible: profilePinRoot.submitting
-            text: "Checking..."
+            text: qsTr("Checking...")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -201,7 +201,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":DIGIT " + root.hints.change + ":CHANGE " + root.hints.select + ":SUBMIT"
+        text: qsTr("%1:BACK %2:DIGIT %3:CHANGE %4:SUBMIT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.change).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

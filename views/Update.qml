@@ -51,7 +51,7 @@ FocusScope {
         case "downloading":     return "Downloading... " + Math.round((updateManager ? updateManager.downloadProgress : 0) * 100) + "%"
         case "readyToApply":    return latestVersion + " ready to install"
         case "error":           return errorMessage
-        default:                return "Press " + root.hints.select + " to check for latest"
+        default:                return "Press " + qsTr("%1 to check for latest").arg(root.hints.select)
         }
     }
 
@@ -74,7 +74,7 @@ FocusScope {
     // marker is written), so backing out truly means "not now".
     readonly property var confirmOptions: [
         { label: updateRoot.applyActionLabel, action: "apply" },
-        { label: "Discard Update",            action: "discard" }
+        { label: qsTr("Discard Update"),            action: "discard" }
     ]
 
     function primaryAction() {
@@ -98,7 +98,7 @@ FocusScope {
     // Header
     AppBar {
         iconSource: "../../assets/images/update.svg"
-        title: "Update"
+        title: qsTr("Update")
         //subtitle: root.appVersion
         anchors.top: parent.top
         anchors.left: parent.left
@@ -135,7 +135,7 @@ FocusScope {
             Row {
                 spacing: root.sw * 0.025 //16
                 Text {
-                    text: "INSTALLED: " + root.appVersion
+                    text: qsTr("INSTALLED: %1").arg(root.appVersion)
                     color: root.primaryColor
                     font.family: root.globalFont
                     font.capitalization: Font.AllUppercase
@@ -143,7 +143,7 @@ FocusScope {
                 }
                 Text {
                     visible: updateRoot.latestVersion !== ""
-                    text: "LATEST: " + updateRoot.latestVersion
+                    text: qsTr("LATEST: %1").arg(updateRoot.latestVersion)
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.capitalization: Font.AllUppercase
@@ -228,9 +228,9 @@ FocusScope {
 
         // Footer
         Text {
-            text: root.hints.back + ":BACK "
-                  + (updateRoot.releaseNotes !== "" ? root.hints.navigate + ":SCROLL " : "")
-                  + (updateRoot.actionLabel !== "" ? root.hints.select + ":" + updateRoot.actionLabel : "")
+            text: qsTr("%1:BACK ").arg(root.hints.back)
+                  + (updateRoot.releaseNotes !== "" ? qsTr("%1:SCROLL ").arg(root.hints.navigate) : "")
+                  + (updateRoot.actionLabel !== "" ? qsTr("%1:").arg(root.hints.select) + updateRoot.actionLabel : "")
             color: root.tertiaryColor
             font.family: root.globalFont
             anchors.bottom: parent.bottom
@@ -285,7 +285,7 @@ FocusScope {
                 spacing: root.sh * 0.05 //24
 
                 Text {
-                    text: "INSTALL " + updateRoot.latestVersion + "?"
+                    text: qsTr("INSTALL %1?").arg(updateRoot.latestVersion)
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16
@@ -324,7 +324,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16

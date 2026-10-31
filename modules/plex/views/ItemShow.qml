@@ -221,7 +221,7 @@ FocusScope {
 
     Text {
         visible: isLoading
-        text: "LOADING..."
+        text: qsTr("LOADING...")
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.centerIn: parent
@@ -257,7 +257,7 @@ FocusScope {
 
                     Text {
                         anchors.centerIn: parent
-                        text: showRoot.resumeAvailable ? "RSUM \u25BA" : "PLAY \u25BA"
+                        text: showRoot.resumeAvailable ? qsTr("RSUM \u25BA") : qsTr("PLAY \u25BA")
                         color: focusRow === 0 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         font.pixelSize: root.sh * 0.05 //24
@@ -275,7 +275,7 @@ FocusScope {
 
                     Text {
                         id: extrasLabel
-                        text: "VIEW EXTRAS"
+                        text: qsTr("VIEW EXTRAS")
                         color: focusRow === 1 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         anchors.centerIn: parent
@@ -295,7 +295,7 @@ FocusScope {
 
                     Text {
                         id: writeCardLabel
-                        text: "WRITE NFC CARD"
+                        text: qsTr("WRITE NFC CARD")
                         color: focusRow === 4 ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         anchors.centerIn: parent
@@ -377,7 +377,7 @@ FocusScope {
         Text {
             id: seasonListLabel
             anchors.top: showDetails.bottom
-            text: "Seasons:"
+            text: qsTr("Seasons:")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -453,7 +453,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
@@ -471,9 +471,9 @@ FocusScope {
         promptText:   "What would you like to play?"
         subtitleText: item.title || ""
         choices: [
-            { label: showRoot.resumeAvailable ? "Resume Next Episode" : "Play Next Episode",
+            { label: showRoot.resumeAvailable ? qsTr("Resume Next Episode") : qsTr("Play Next Episode"),
               action: "next" },
-            { label: "Shuffle Episodes", action: "shuffle" }
+            { label: qsTr("Shuffle Episodes"), action: "shuffle" }
         ]
         onClosed: showRoot.forceActiveFocus()
         onActivated: function(action) {

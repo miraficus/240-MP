@@ -77,7 +77,7 @@ FocusScope {
         spacing: root.sh * 0.02
 
         Text {
-            text: "NFC Reader"
+            text: qsTr("NFC Reader")
             color: root.primaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -86,7 +86,7 @@ FocusScope {
         }
 
         Text {
-            text: "Not supported on this platform"
+            text: qsTr("Not supported on this platform")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -95,7 +95,7 @@ FocusScope {
         }
 
         Text {
-            text: "NFC reader support requires Linux or macOS.\nSee the wiki for details."
+            text: qsTr("NFC reader support requires Linux or macOS.\nSee the wiki for details.")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.pixelSize: root.sh * 0.025
@@ -107,7 +107,7 @@ FocusScope {
 
     Text {
         visible: !nfcReaderBackend.available
-        text: root.hints.back + ":BACK"
+        text: qsTr("%1:BACK").arg(root.hints.back)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

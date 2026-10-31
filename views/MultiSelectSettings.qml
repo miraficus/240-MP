@@ -60,7 +60,7 @@ FocusScope {
     // Header
     AppBar {
         iconSource: "../../assets/images/settings.svg"
-        title: "Settings"
+        title: qsTr("Settings")
         subtitle: moduleId.split(".").pop().toUpperCase() + " / " + settingLabel
         anchors.top: parent.top
         anchors.left: parent.left
@@ -140,7 +140,7 @@ FocusScope {
                     spacing: root.sw * 0.00625 //4
 
                     Text {
-                        text: "\u25C4"
+                        text: qsTr("\u25C4")
                         color: optionsList.currentIndex === index ? root.surfaceColor : root.tertiaryColor
                         font.family: root.globalFont
                         anchors.verticalCenter: parent.verticalCenter
@@ -149,7 +149,7 @@ FocusScope {
                         font.pixelSize: root.sh * 0.0375 //18
                     }
                     Text {
-                        text: multiSelectRoot.enabledMap[modelData.id] ? "ON" : "OFF"
+                        text: multiSelectRoot.enabledMap[modelData.id] ? qsTr("ON") : qsTr("OFF")
                         color: optionsList.currentIndex === index ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         font.capitalization: Font.AllUppercase
@@ -161,7 +161,7 @@ FocusScope {
                         font.pixelSize:root.sh * 0.05 //24
                     }
                     Text {
-                        text: "\u25BA"
+                        text: qsTr("\u25BA")
                         color: optionsList.currentIndex === index ? root.surfaceColor : root.tertiaryColor
                         font.family: root.globalFont
                         anchors.verticalCenter: parent.verticalCenter
@@ -177,7 +177,7 @@ FocusScope {
     // --- FOOTER ---
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.change + ":CHANGE"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:CHANGE").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.change)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

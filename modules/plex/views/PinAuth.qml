@@ -81,7 +81,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: "Sign in"
+        subtitle: qsTr("Sign in")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -106,7 +106,7 @@ FocusScope {
 
         Text {
             visible: pinCode !== ""
-            text: "Visit plex.tv/link and enter the code above"
+            text: qsTr("Visit plex.tv/link and enter the code above")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -121,7 +121,7 @@ FocusScope {
             anchors.horizontalCenter: parent.horizontalCenter
 
             Text {
-                text: "Waiting"
+                text: qsTr("Waiting")
                 color: root.tertiaryColor
                 font.family: root.globalFont
                 font.capitalization: Font.AllUppercase
@@ -147,7 +147,7 @@ FocusScope {
         // Loading Indicator
         Text {
             visible: pinCode === "" && errorMsg === ""
-            text: "Requesting Pin..."
+            text: qsTr("Requesting Pin...")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -171,7 +171,7 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK"
+        text: qsTr("%1:BACK").arg(root.hints.back)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

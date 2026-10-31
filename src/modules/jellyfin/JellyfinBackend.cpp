@@ -256,7 +256,7 @@ void JellyfinBackend::check_auth() {
             return;
         }
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("AUTH CHECK FAILED: " + reply->errorString());
+            emit errorOccurred(tr("AUTH CHECK FAILED: %1").arg(reply->errorString()));
             return;
         }
         emit authStateChanged();
@@ -283,7 +283,7 @@ void JellyfinBackend::logout() {
 void JellyfinBackend::quick_connect_initiate(const QString &serverUrl) {
     QString normalized = normalizeServerUrl(serverUrl);
     if (normalized.isEmpty()) {
-        emit errorOccurred("SERVER URL REQUIRED");
+        emit errorOccurred(tr("SERVER URL REQUIRED"));
         return;
     }
 
@@ -384,7 +384,7 @@ void JellyfinBackend::quick_connect_poll(const QString &secret) {
 
 void JellyfinBackend::quick_connect_authenticate(const QString &secret) {
     if (secret.isEmpty()) {
-        emit errorOccurred("NO SECRET");
+        emit errorOccurred(tr("NO SECRET"));
         return;
     }
 
@@ -413,12 +413,12 @@ void JellyfinBackend::quick_connect_authenticate(const QString &secret) {
         QByteArray body = reply->readAll();
 
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("AUTH FAILED: " + reply->errorString());
+            emit errorOccurred(tr("AUTH FAILED: %1").arg(reply->errorString()));
             return;
         }
         if (status >= 400) {
             qWarning("[JellyfinBackend] QC Auth HTTP %d", status);
-            emit errorOccurred("AUTH FAILED (HTTP " + QString::number(status) + ")");
+            emit errorOccurred(tr("AUTH FAILED (HTTP ") + QString::number(status) + ")");
             return;
         }
 
@@ -427,7 +427,7 @@ void JellyfinBackend::quick_connect_authenticate(const QString &secret) {
         QJsonObject user = data["User"].toObject();
 
         if (token.isEmpty() || user["Id"].toString().isEmpty()) {
-            emit errorOccurred("INVALID AUTH RESPONSE");
+            emit errorOccurred(tr("INVALID AUTH RESPONSE"));
             return;
         }
 
@@ -586,7 +586,7 @@ QVariantMap JellyfinBackend::formatItem(const QJsonObject &item) const {
 
 void JellyfinBackend::load_libraries() {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -595,7 +595,7 @@ void JellyfinBackend::load_libraries() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD LIBRARIES FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD LIBRARIES FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -652,7 +652,7 @@ void JellyfinBackend::probeHasItems(const QUrl &url, std::function<void(bool)> c
 
 void JellyfinBackend::load_items(const QString &parentId, const QString &includeTypes, const QString &sortBy) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -679,7 +679,7 @@ void JellyfinBackend::load_items(const QString &parentId, const QString &include
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD ITEMS FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD ITEMS FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -693,7 +693,7 @@ void JellyfinBackend::load_items(const QString &parentId, const QString &include
 
 void JellyfinBackend::load_item_detail(const QString &itemId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -706,7 +706,7 @@ void JellyfinBackend::load_item_detail(const QString &itemId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD ITEM DETAIL FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD ITEM DETAIL FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -717,7 +717,7 @@ void JellyfinBackend::load_item_detail(const QString &itemId) {
 
 void JellyfinBackend::load_children(const QString &itemId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -736,7 +736,7 @@ void JellyfinBackend::load_children(const QString &itemId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD CHILDREN FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD CHILDREN FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -750,7 +750,7 @@ void JellyfinBackend::load_children(const QString &itemId) {
 
 void JellyfinBackend::load_boxset_children(const QString &parentId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -773,7 +773,7 @@ void JellyfinBackend::load_boxset_children(const QString &parentId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD BOXSET FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD BOXSET FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -787,7 +787,7 @@ void JellyfinBackend::load_boxset_children(const QString &parentId) {
 
 void JellyfinBackend::load_folder_children(const QString &parentId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -808,7 +808,7 @@ void JellyfinBackend::load_folder_children(const QString &parentId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD FOLDER FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD FOLDER FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -831,7 +831,7 @@ void JellyfinBackend::load_folder_children(const QString &parentId) {
 
 void JellyfinBackend::load_seasons(const QString &seriesId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -847,7 +847,7 @@ void JellyfinBackend::load_seasons(const QString &seriesId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD SEASONS FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD SEASONS FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonArray items = QJsonDocument::fromJson(reply->readAll()).object()["Items"].toArray();
@@ -861,7 +861,7 @@ void JellyfinBackend::load_seasons(const QString &seriesId) {
 
 void JellyfinBackend::load_episodes(const QString &seriesId, const QString &seasonId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -880,7 +880,7 @@ void JellyfinBackend::load_episodes(const QString &seriesId, const QString &seas
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD EPISODES FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD EPISODES FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonArray items = QJsonDocument::fromJson(reply->readAll()).object()["Items"].toArray();
@@ -894,7 +894,7 @@ void JellyfinBackend::load_episodes(const QString &seriesId, const QString &seas
 
 void JellyfinBackend::load_continue_watching() {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -908,7 +908,7 @@ void JellyfinBackend::load_continue_watching() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD CONTINUE WATCHING FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD CONTINUE WATCHING FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -922,7 +922,7 @@ void JellyfinBackend::load_continue_watching() {
 
 void JellyfinBackend::load_up_next() {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -938,7 +938,7 @@ void JellyfinBackend::load_up_next() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD UP NEXT FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD UP NEXT FAILED: %1").arg(reply->errorString()));
             return;
         }
 
@@ -952,7 +952,7 @@ void JellyfinBackend::load_up_next() {
 
 void JellyfinBackend::load_series_next_up(const QString &seriesId) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -970,7 +970,7 @@ void JellyfinBackend::load_series_next_up(const QString &seriesId) {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("LOAD SERIES NEXT UP FAILED: " + reply->errorString());
+            emit errorOccurred(tr("LOAD SERIES NEXT UP FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonArray items = QJsonDocument::fromJson(reply->readAll()).object()["Items"].toArray();
@@ -989,7 +989,7 @@ void JellyfinBackend::get_playback_url(const QString &itemId, const QString &med
                                        int audioStreamIndex, int subtitleStreamIndex,
                                        bool forceTranscode) {
     if (!has_auth()) {
-        emit errorOccurred("NOT AUTHENTICATED");
+        emit errorOccurred(tr("NOT AUTHENTICATED"));
         return;
     }
 
@@ -1114,14 +1114,14 @@ void JellyfinBackend::get_playback_url(const QString &itemId, const QString &med
     connect(reply, &QNetworkReply::finished, this, [this, reply, itemId, mediaSourceId, audioStreamIndex, subtitleStreamIndex, directPlay]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("PLAYBACK INFO FAILED: " + reply->errorString());
+            emit errorOccurred(tr("PLAYBACK INFO FAILED: %1").arg(reply->errorString()));
             return;
         }
 
         QJsonObject data = QJsonDocument::fromJson(reply->readAll()).object();
         QJsonArray sources = data["MediaSources"].toArray();
         if (sources.isEmpty()) {
-            emit errorOccurred("NO PLAYABLE SOURCE");
+            emit errorOccurred(tr("NO PLAYABLE SOURCE"));
             return;
         }
 
@@ -1172,7 +1172,7 @@ void JellyfinBackend::get_playback_url(const QString &itemId, const QString &med
         }
         QString transcodeUrl = source["TranscodingUrl"].toString();
         if (transcodeUrl.isEmpty()) {
-            emit errorOccurred("NO TRANSCODE URL");
+            emit errorOccurred(tr("NO TRANSCODE URL"));
             return;
         }
         m_currentPlaySessionId = playSessionId;

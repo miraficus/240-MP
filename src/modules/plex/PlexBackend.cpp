@@ -570,7 +570,7 @@ static bool switchNeedsPin(int status, const QByteArray &body) {
 void PlexBackend::activateUser(const QString &userId, const QString &pin,
                                 std::function<void(const QVariantList &)> callback) {
     QJsonObject user = cachedUser(userId);
-    if (user.isEmpty()) { emit errorOccurred("USER NOT FOUND"); return; }
+    if (user.isEmpty()) { emit errorOccurred(tr("USER NOT FOUND")); return; }
 
     m_pendingPinUserId.clear();   // re-armed below if this attempt is refused
 
@@ -632,7 +632,7 @@ void PlexBackend::activateUser(const QString &userId, const QString &pin,
 void PlexBackend::performUserSwitch(const QString &userId, const QString &pin,
                                      std::function<void(const QVariantList &)> callback) {
     QJsonObject user = cachedUser(userId);
-    if (user.isEmpty()) { emit errorOccurred("USER NOT FOUND"); return; }
+    if (user.isEmpty()) { emit errorOccurred(tr("USER NOT FOUND")); return; }
 
     QString switchKey = user["uuid"].toString();
     if (switchKey.isEmpty()) switchKey = userId;
@@ -666,7 +666,7 @@ void PlexBackend::performUserSwitch(const QString &userId, const QString &pin,
             // current_user_id setting) can hand off to Root.qml on module entry.
             // In-module callers prompt immediately and clear this on the retry.
             m_pendingPinUserId = userId;
-            if (hadPin) emit errorOccurred("INCORRECT PIN");
+            if (hadPin) emit errorOccurred(tr("INCORRECT PIN"));
             emit userPinRequired(userId, hadPin);
             return;
         }
@@ -736,7 +736,7 @@ void PlexBackend::performUserSwitch(const QString &userId, const QString &pin,
             // (An empty map with nothing dropped just means the resource fetch
             // failed; that path still falls through and keeps the previous tokens.)
             if (tokenMap.isEmpty() && dropped > 0) {
-                emit errorOccurred("PLEX DID NOT ISSUE A SERVER TOKEN FOR THIS DEVICE");
+                emit errorOccurred(tr("PLEX DID NOT ISSUE A SERVER TOKEN FOR THIS DEVICE"));
                 return;
             }
 
@@ -964,7 +964,7 @@ void PlexBackend::start_pin_auth() {
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("PIN REQUEST FAILED: " + reply->errorString());
+            emit errorOccurred(tr("PIN REQUEST FAILED: %1").arg(reply->errorString()));
             return;
         }
         QJsonObject data = QJsonDocument::fromJson(reply->readAll()).object();
@@ -1025,7 +1025,7 @@ void PlexBackend::fetchUsersAndServers(const QString &token) {
     connect(usersReply, &QNetworkReply::finished, this, [this, token, usersReply]() {
         usersReply->deleteLater();
         if (usersReply->error() != QNetworkReply::NoError) {
-            emit errorOccurred("FAILED TO LOAD ACCOUNT: " + usersReply->errorString());
+            emit errorOccurred(tr("FAILED TO LOAD ACCOUNT: %1").arg(usersReply->errorString()));
             return;
         }
         QJsonObject usersData = QJsonDocument::fromJson(usersReply->readAll()).object();
@@ -1260,7 +1260,7 @@ void PlexBackend::select_server(const QString &machineId) {
         QJsonObject s = v.toObject();
         if (s["machineId"].toString() == machineId) { server = s; break; }
     }
-    if (server.isEmpty()) { emit errorOccurred("SERVER NOT FOUND"); return; }
+    if (server.isEmpty()) { emit errorOccurred(tr("SERVER NOT FOUND")); return; }
 
     // ratingKeys are server-local, so a cached year would be attributed to
     // whatever unrelated show holds that key on the new server.
@@ -1348,7 +1348,7 @@ void PlexBackend::load_libraries() {
 void PlexBackend::load_libraries_impl() {
     QString uri   = serverUrl();
     QString token = serverToken();
-    if (uri.isEmpty()) { emit errorOccurred("NO SERVER CONFIGURED"); return; }
+    if (uri.isEmpty()) { emit errorOccurred(tr("NO SERVER CONFIGURED")); return; }
 
     // The one line that says whether we are about to hand PMS something it can
     // use.  "JWT" here means a 401 is coming; see tokenShape.
@@ -1417,7 +1417,7 @@ void PlexBackend::load_libraries_impl() {
                                 : "SERVER REJECTED THIS DEVICE. PLEASE TRY AGAIN.");
                     }
                 } else {
-                    emit errorOccurred("LOAD LIBRARIES FAILED: " + secReply->errorString());
+                    emit errorOccurred(tr("LOAD LIBRARIES FAILED: %1").arg(secReply->errorString()));
                 }
                 return;
             }
@@ -1485,7 +1485,7 @@ void PlexBackend::load_continue_watching() {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this]{ load_continue_watching(); }); return;
             }
-            emit errorOccurred("CONTINUE WATCHING FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("CONTINUE WATCHING FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray hubs = QJsonDocument::fromJson(reply->readAll())
                           .object()["MediaContainer"].toObject()["Hub"].toArray();
@@ -1508,7 +1508,7 @@ void PlexBackend::load_section_hubs(const QString &sectionId) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, sectionId]{ load_section_hubs(sectionId); }); return;
             }
-            emit errorOccurred("LOAD HUBS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD HUBS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray hubs = QJsonDocument::fromJson(reply->readAll())
                           .object()["MediaContainer"].toObject()["Hub"].toArray();
@@ -1536,7 +1536,7 @@ void PlexBackend::load_items_for_hub(const QString &hubKey) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, hubKey]{ load_items_for_hub(hubKey); }); return;
             }
-            emit errorOccurred("LOAD HUB ITEMS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD HUB ITEMS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonObject container = QJsonDocument::fromJson(reply->readAll()).object();
         QJsonObject mc = container["MediaContainer"].toObject();
@@ -1558,7 +1558,7 @@ void PlexBackend::load_library_all(const QString &sectionId) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, sectionId]{ load_library_all(sectionId); }); return;
             }
-            emit errorOccurred("LOAD LIBRARY FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD LIBRARY FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -1577,7 +1577,7 @@ void PlexBackend::load_collections(const QString &sectionId) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, sectionId]{ load_collections(sectionId); }); return;
             }
-            emit errorOccurred("LOAD COLLECTIONS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD COLLECTIONS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -1600,7 +1600,7 @@ void PlexBackend::load_collection_items(const QString &ratingKey) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, ratingKey]{ load_collection_items(ratingKey); }); return;
             }
-            emit errorOccurred("LOAD COLLECTION ITEMS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD COLLECTION ITEMS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -1621,7 +1621,7 @@ void PlexBackend::load_playlists(const QString &sectionId) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, sectionId]{ load_playlists(sectionId); }); return;
             }
-            emit errorOccurred("LOAD PLAYLISTS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD PLAYLISTS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -1644,7 +1644,7 @@ void PlexBackend::load_playlist_items(const QString &ratingKey) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, ratingKey]{ load_playlist_items(ratingKey); }); return;
             }
-            emit errorOccurred("LOAD PLAYLIST ITEMS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD PLAYLIST ITEMS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -1663,7 +1663,7 @@ void PlexBackend::load_categories(const QString &sectionId) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, sectionId]{ load_categories(sectionId); }); return;
             }
-            emit errorOccurred("LOAD CATEGORIES FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD CATEGORIES FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray dirs = QJsonDocument::fromJson(reply->readAll())
                           .object()["MediaContainer"].toObject()["Directory"].toArray();
@@ -1695,7 +1695,7 @@ void PlexBackend::load_category_items(const QString &sectionId, const QString &f
                 if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                     handle498([this, sectionId, filterKey]{ load_category_items(sectionId, filterKey); }); return;
                 }
-                emit errorOccurred("LOAD CATEGORY ITEMS FAILED: " + reply->errorString()); return;
+                emit errorOccurred(tr("LOAD CATEGORY ITEMS FAILED: %1").arg(reply->errorString())); return;
             }
             QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                                   .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -1712,7 +1712,7 @@ void PlexBackend::load_category_items(const QString &sectionId, const QString &f
                 if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                     handle498([this, sectionId, filterKey]{ load_category_items(sectionId, filterKey); }); return;
                 }
-                emit errorOccurred("LOAD CATEGORY ITEMS FAILED: " + reply->errorString()); return;
+                emit errorOccurred(tr("LOAD CATEGORY ITEMS FAILED: %1").arg(reply->errorString())); return;
             }
             QJsonArray dirs = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Directory"].toArray();
@@ -1757,7 +1757,7 @@ void PlexBackend::load_folder(const QString &sectionId, const QString &folderKey
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, sectionId, folderKey]{ load_folder(sectionId, folderKey); }); return;
             }
-            emit errorOccurred("LOAD FOLDERS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD FOLDERS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonObject mc = QJsonDocument::fromJson(reply->readAll())
                          .object()["MediaContainer"].toObject();
@@ -1988,11 +1988,11 @@ void PlexBackend::load_item_detail(const QString &ratingKey) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, ratingKey]{ load_item_detail(ratingKey); }); return;
             }
-            emit errorOccurred("LOAD DETAIL FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD DETAIL FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metaArr = QJsonDocument::fromJson(reply->readAll())
                              .object()["MediaContainer"].toObject()["Metadata"].toArray();
-        if (metaArr.isEmpty()) { emit errorOccurred("LOAD DETAIL FAILED: empty metadata"); return; }
+        if (metaArr.isEmpty()) { emit errorOccurred(tr("LOAD DETAIL FAILED: empty metadata")); return; }
         emit itemLoaded(buildItemDetail(metaArr[0].toObject()));
     });
 }
@@ -2006,7 +2006,7 @@ void PlexBackend::load_children(const QString &ratingKey) {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, ratingKey]{ load_children(ratingKey); }); return;
             }
-            emit errorOccurred("LOAD CHILDREN FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD CHILDREN FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
                               .object()["MediaContainer"].toObject()["Metadata"].toArray();
@@ -2575,7 +2575,7 @@ void PlexBackend::request_transcode(const QString &ratingKey, const QString &par
                     request_transcode(ratingKey, partKey, sessionId, audioId, subtitleId, offsetMs);
                 }); return;
             }
-            emit errorOccurred("TRANSCODE FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("TRANSCODE FAILED: %1").arg(reply->errorString())); return;
         }
         // The server returns a master m3u8 with a relative variant URL.
         // Parse it to find the first non-comment line, then resolve to absolute.
@@ -2646,7 +2646,7 @@ void PlexBackend::set_subtitle_stream(const QString &streamId, const QString &pa
 
 void PlexBackend::load_live_channels() {
     QString uri = serverUrl(), token = serverToken();
-    if (uri.isEmpty()) { emit errorOccurred("NO SERVER CONFIGURED"); return; }
+    if (uri.isEmpty()) { emit errorOccurred(tr("NO SERVER CONFIGURED")); return; }
 
     auto *reply = plexGet(QUrl(uri + "/livetv/dvrs"), token);
     connect(reply, &QNetworkReply::finished, this, [this, reply, uri, token]() {
@@ -2655,7 +2655,7 @@ void PlexBackend::load_live_channels() {
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this]{ load_live_channels(); }); return;
             }
-            emit errorOccurred("LOAD DVRS FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("LOAD DVRS FAILED: %1").arg(reply->errorString())); return;
         }
         QJsonObject mc = QJsonDocument::fromJson(reply->readAll())
                          .object()["MediaContainer"].toObject();
@@ -2685,7 +2685,7 @@ void PlexBackend::load_live_channels() {
         connect(provReply, &QNetworkReply::finished, this, [this, uri, token, provReply]() {
             provReply->deleteLater();
             if (provReply->error() != QNetworkReply::NoError) {
-                emit errorOccurred("LOAD PROVIDERS FAILED: " + provReply->errorString()); return;
+                emit errorOccurred(tr("LOAD PROVIDERS FAILED: %1").arg(provReply->errorString())); return;
             }
             QJsonArray providers = QJsonDocument::fromJson(provReply->readAll())
                                     .object()["MediaContainer"].toObject()["MediaProvider"].toArray();
@@ -2707,7 +2707,7 @@ void PlexBackend::load_live_channels() {
             connect(chReply, &QNetworkReply::finished, this, [this, chReply]() {
                 chReply->deleteLater();
                 if (chReply->error() != QNetworkReply::NoError) {
-                    emit errorOccurred("LOAD CHANNELS FAILED: " + chReply->errorString()); return;
+                    emit errorOccurred(tr("LOAD CHANNELS FAILED: %1").arg(chReply->errorString())); return;
                 }
                 QByteArray body = chReply->readAll();
                 QJsonObject cmc = QJsonDocument::fromJson(body)
@@ -2735,7 +2735,7 @@ void PlexBackend::load_live_channels() {
 
 void PlexBackend::tune_channel(const QString &channelId, const QString &sessionId) {
     QString uri = serverUrl(), token = serverToken();
-    if (m_liveDvrId.isEmpty()) { emit errorOccurred("NO LIVE DVR"); return; }
+    if (m_liveDvrId.isEmpty()) { emit errorOccurred(tr("NO LIVE DVR")); return; }
 
     QUrl url(uri + "/livetv/dvrs/" + m_liveDvrId + "/channels/" + channelId + "/tune");
     QUrlQuery q;
@@ -2750,7 +2750,7 @@ void PlexBackend::tune_channel(const QString &channelId, const QString &sessionI
             if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
                 handle498([this, channelId, sessionId]{ tune_channel(channelId, sessionId); }); return;
             }
-            emit errorOccurred("TUNE FAILED: " + reply->errorString()); return;
+            emit errorOccurred(tr("TUNE FAILED: %1").arg(reply->errorString())); return;
         }
         QByteArray body = reply->readAll();
         QJsonObject mc = QJsonDocument::fromJson(body).object()["MediaContainer"].toObject();
@@ -2770,7 +2770,7 @@ void PlexBackend::tune_channel(const QString &channelId, const QString &sessionI
         if (livePath.isEmpty()) {
             QString msg = mc["message"].toString();
             qDebug() << "[Plex] Tune produced no stream — raw:" << body.left(600);
-            emit errorOccurred("TUNE FAILED: " + (msg.isEmpty() ? QString("no playable stream") : msg));
+            emit errorOccurred(tr("TUNE FAILED: ") + (msg.isEmpty() ? QString("no playable stream") : msg));
             return;
         }
         m_liveTimelineKey = livePath;
@@ -2809,7 +2809,7 @@ void PlexBackend::tune_channel(const QString &channelId, const QString &sessionI
         connect(startReply, &QNetworkReply::finished, this, [this, startReply, token]() {
             startReply->deleteLater();
             if (startReply->error() != QNetworkReply::NoError) {
-                emit errorOccurred("LIVE STREAM FAILED: " + startReply->errorString()); return;
+                emit errorOccurred(tr("LIVE STREAM FAILED: %1").arg(startReply->errorString())); return;
             }
             QByteArray sbody = startReply->readAll();
             QString variantPath;
@@ -2904,18 +2904,18 @@ void PlexBackend::getServers() {
 
 void PlexBackend::getVideoQualities() {
     QVariantList options = {
-        QVariantMap{{"id","auto"}, {"label","Direct Play"}},
-        QVariantMap{{"id","8000"}, {"label","8 Mbps (1080p)"}},
-        QVariantMap{{"id","4000"}, {"label","4 Mbps (720p)"}},
-        QVariantMap{{"id","2000"}, {"label","2 Mbps (480p)"}},
+        QVariantMap{{"id","auto"}, {"label",tr("Direct Play")}},
+        QVariantMap{{"id","8000"}, {"label",tr("8 Mbps (1080p)")}},
+        QVariantMap{{"id","4000"}, {"label",tr("4 Mbps (720p)")}},
+        QVariantMap{{"id","2000"}, {"label",tr("2 Mbps (480p)")}},
     };
     emit dynamicOptionsReady("video_quality", options);
 }
 
 void PlexBackend::get_resume_playback_options() {
     QVariantList options;
-    QVariantMap ask; ask["id"] = "ask"; ask["label"] = "Ask";
-    QVariantMap yes; yes["id"] = "yes"; yes["label"] = "Always";
+    QVariantMap ask; ask["id"] = "ask"; ask["label"] = tr("Ask");
+    QVariantMap yes; yes["id"] = "yes"; yes["label"] = tr("Always");
     options << ask << yes;
     emit dynamicOptionsReady("resume_playback", options);
 }

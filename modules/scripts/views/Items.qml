@@ -88,7 +88,7 @@ FocusScope {
         spacing: root.sh * 0.0333333 //16
         visible: scriptList.count === 0
         Text {
-            text: "No scripts found"
+            text: qsTr("No scripts found")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -97,7 +97,7 @@ FocusScope {
             font.pixelSize: root.sh * 0.05 //24
         }
         Text {
-            text: "Please add .sh files to the scripts directory"
+            text: qsTr("Please add .sh files to the scripts directory")
             color: root.tertiaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -289,8 +289,8 @@ FocusScope {
         property int choiceIndex: 0
         // Cancel first so a stray ENTER can't run something destructive.
         readonly property var choices: [
-            { label: "Cancel", run: false },
-            { label: "Run",    run: true  }
+            { label: qsTr("Cancel"), run: false },
+            { label: qsTr("Run"),    run: true  }
         ]
 
         onVisibleChanged: if (visible) choiceIndex = 0
@@ -339,7 +339,7 @@ FocusScope {
                 spacing: root.sh * 0.05 //24
 
                 Text {
-                    text: "RUN " + (itemsRoot.pendingScript ? itemsRoot.pendingScript.name : "") + "?"
+                    text: qsTr("RUN %1?").arg(itemsRoot.pendingScript ? itemsRoot.pendingScript.name : "")
                     color: root.secondaryColor
                     font.family: root.globalFont
                     font.capitalization: Font.AllUppercase
@@ -379,7 +379,7 @@ FocusScope {
                 }
 
                 Text {
-                    text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.select + ":SELECT"
+                    text: qsTr("%1:BACK %2:NAVIGATE %3:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.select)
                     color: root.tertiaryColor
                     font.family: root.globalFont
                     font.pixelSize: root.sh * 0.0333333 //16
@@ -392,11 +392,11 @@ FocusScope {
     // Footer
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE "
+        text: qsTr("%1:BACK %2:NAVIGATE ").arg(root.hints.back).arg(root.hints.navigate)
               + root.hints.browse
               + ((itemsRoot.currentScript && itemsRoot.currentScript.favorite)
                  ? ":UNFAVORITE " : ":FAVORITE ")
-              + root.hints.select + ":RUN"
+              + qsTr("%1:RUN").arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

@@ -63,7 +63,7 @@ FocusScope {
         if (type === "toggle") {
             var raw = currentValues[key]
             if (raw === undefined || raw === null) raw = (item.default === "ON")
-            return (raw === true || raw === "ON") ? "ON" : "OFF"
+            return (raw === true || raw === "ON") ? qsTr("ON") : qsTr("OFF")
         }
 
         if (type === "list_single") {
@@ -75,12 +75,13 @@ FocusScope {
                 }
                 return opts.length > 0 ? opts[0].label : "---"
             }
-            return currentValues[key] || (item.default || "---")
+            var value = currentValues[key] || (item.default || "---")
+            return (item.option_labels || {})[value] || value
         }
 
         if (type === "directory_browser") {
             var saved = currentValues[key] || ""
-            return saved !== "" ? saved : "Default"
+            return saved !== "" ? saved : qsTr("Default")
         }
 
         return ""
@@ -91,8 +92,9 @@ FocusScope {
         if (!item) return
 
         if (item.type === "toggle") {
-            var cur = currentDisplayValue(item)
-            var newVal = (cur === "ON") ? false : true
+            var raw = currentValues[item.key]
+            if (raw === undefined || raw === null) raw = (item.default === "ON")
+            var newVal = !(raw === true || raw === "ON")
             var updated = Object.assign({}, currentValues)
             updated[item.key] = newVal
             currentValues = updated
@@ -174,7 +176,7 @@ FocusScope {
     // Header
     AppBar {
         iconSource: "../../assets/images/settings.svg"
-        title: "Settings"
+        title: qsTr("Settings")
         subtitle: moduleName
         anchors.top: parent.top
         anchors.left: parent.left
@@ -277,7 +279,7 @@ FocusScope {
                     // Left arrow for cycled types
                     Text {
                         visible: modelData.type === "toggle" || modelData.type === "list_single"
-                        text: "\u25C4"
+                        text: qsTr("\u25C4")
                         color: settingsList.currentIndex === index ? root.surfaceColor : root.tertiaryColor
                         font.family: root.globalFont
                         anchors.verticalCenter: parent.verticalCenter
@@ -328,7 +330,7 @@ FocusScope {
 
                     // Right arrow (always shown)
                     Text {
-                        text: "\u25BA"
+                        text: qsTr("\u25BA")
                         color: settingsList.currentIndex === index ? root.surfaceColor : root.tertiaryColor
                         font.family: root.globalFont
                         anchors.verticalCenter: parent.verticalCenter
@@ -372,7 +374,7 @@ FocusScope {
     // --- FOOTER ---
     Text {
         id: footer
-        text: root.hints.back + ":BACK " + root.hints.navigate + ":NAVIGATE " + root.hints.change + ":CHANGE " + root.hints.select + ":SELECT"
+        text: qsTr("%1:BACK %2:NAVIGATE %3:CHANGE %4:SELECT").arg(root.hints.back).arg(root.hints.navigate).arg(root.hints.change).arg(root.hints.select)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom

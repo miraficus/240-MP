@@ -614,18 +614,18 @@ QString NfcReaderBackend::ytdlFormatForResolution(const QString &resolution) con
 
 void NfcReaderBackend::get_resume_playback_options() {
     QVariantList options;
-    QVariantMap ask; ask["id"] = "ask"; ask["label"] = "Ask";
-    QVariantMap yes; yes["id"] = "yes"; yes["label"] = "Always";
-    QVariantMap no;  no["id"]  = "no";  no["label"]  = "Never";
+    QVariantMap ask; ask["id"] = "ask"; ask["label"] = tr("Ask");
+    QVariantMap yes; yes["id"] = "yes"; yes["label"] = tr("Always");
+    QVariantMap no;  no["id"]  = "no";  no["label"]  = tr("Never");
     options << ask << yes << no;
     emit dynamicOptionsReady("resume_playback", options);
 }
 
 void NfcReaderBackend::get_auto_subtitles_options() {
     QVariantList options;
-    QVariantMap forced; forced["id"] = "forced"; forced["label"] = "Forced Only";
-    QVariantMap on;     on["id"] = "on";         on["label"] = "On";
-    QVariantMap off;    off["id"] = "off";       off["label"] = "Off";
+    QVariantMap forced; forced["id"] = "forced"; forced["label"] = tr("Forced Only");
+    QVariantMap on;     on["id"] = "on";         on["label"] = tr("On");
+    QVariantMap off;    off["id"] = "off";       off["label"] = tr("Off");
     options << forced << on << off;
     emit dynamicOptionsReady("auto_subtitles", options);
 }
@@ -638,7 +638,7 @@ void NfcReaderBackend::get_subtitle_languages() {
     if (!file.open(QIODevice::ReadOnly))
         return;
 
-    options.append(QVariantMap{{"id","-"},{"label","Any"}});
+    options.append(QVariantMap{{"id","-"},{"label",tr("Any")}});
 
     QVariantList locList = QJsonDocument::fromJson(file.readAll()).toVariant().toList();
     for (const QVariant loc : locList)

@@ -109,37 +109,37 @@ void LocalFilesBackend::clearPosition(const QString &filePath) {
 
 void LocalFilesBackend::get_auto_subtitles_options() {
     QVariantList options;
-    QVariantMap forced; forced["id"] = "forced"; forced["label"] = "Forced Only"; forced["old"] = false;
-    QVariantMap on;     on["id"] = "on";         on["label"] = "On";              on["old"] = true;
-    QVariantMap off;    off["id"] = "off";       off["label"] = "Off";
+    QVariantMap forced; forced["id"] = "forced"; forced["label"] = tr("Forced Only"); forced["old"] = false;
+    QVariantMap on;     on["id"] = "on";         on["label"] = tr("On");              on["old"] = true;
+    QVariantMap off;    off["id"] = "off";       off["label"] = tr("Off");
     options << forced << on << off;
     emit dynamicOptionsReady("auto_subtitles", options);
 }
 
 void LocalFilesBackend::get_resume_playback_options() {
     QVariantList options;
-    QVariantMap ask; ask["id"] = "ask"; ask["label"] = "Ask";
-    QVariantMap yes; yes["id"] = "yes"; yes["label"] = "Always";
-    QVariantMap no;  no["id"]  = "no";  no["label"]  = "Never";
+    QVariantMap ask; ask["id"] = "ask"; ask["label"] = tr("Ask");
+    QVariantMap yes; yes["id"] = "yes"; yes["label"] = tr("Always");
+    QVariantMap no;  no["id"]  = "no";  no["label"]  = tr("Never");
     options << ask << yes << no;
     emit dynamicOptionsReady("resume_playback", options);
 }
 
 void LocalFilesBackend::get_shuffle_playback_options() {
     QVariantList options;
-    QVariantMap ask; ask["id"] = "ask"; ask["label"] = "Ask";
-    QVariantMap yes; yes["id"] = "yes"; yes["label"] = "Always"; yes["old"] = true;
-    QVariantMap no;  no["id"]  = "no";  no["label"]  = "Never";  no["old"]  = false;
+    QVariantMap ask; ask["id"] = "ask"; ask["label"] = tr("Ask");
+    QVariantMap yes; yes["id"] = "yes"; yes["label"] = tr("Always"); yes["old"] = true;
+    QVariantMap no;  no["id"]  = "no";  no["label"]  = tr("Never");  no["old"]  = false;
     options << ask << yes << no;
     emit dynamicOptionsReady("shuffle_playback", options);
 }
 
 void LocalFilesBackend::get_image_duration_options() {
     QVariantList options;
-    QVariantMap five;   five["id"]   = "5";  five["label"]   = "5 Seconds";
-    QVariantMap ten;    ten["id"]    = "10"; ten["label"]    = "10 Seconds";
-    QVariantMap thirty; thirty["id"] = "30"; thirty["label"] = "30 Seconds";
-    QVariantMap sixty;  sixty["id"]  = "60"; sixty["label"]  = "60 Seconds";
+    QVariantMap five;   five["id"]   = "5";  five["label"]   = tr("5 Seconds");
+    QVariantMap ten;    ten["id"]    = "10"; ten["label"]    = tr("10 Seconds");
+    QVariantMap thirty; thirty["id"] = "30"; thirty["label"] = tr("30 Seconds");
+    QVariantMap sixty;  sixty["id"]  = "60"; sixty["label"]  = tr("60 Seconds");
     options << five << ten << thirty << sixty;
     emit dynamicOptionsReady("image_duration", options);
 }
@@ -152,7 +152,7 @@ void LocalFilesBackend::get_subtitle_languages() {
     if (!file.open(QIODevice::ReadOnly))
         return;
 
-    options.append(QVariantMap{{"id","-"},{"label","Any"}});
+    options.append(QVariantMap{{"id","-"},{"label",tr("Any")}});
 
     QVariantList locList = QJsonDocument::fromJson(file.readAll()).toVariant().toList();
     for (const QVariant loc : locList)

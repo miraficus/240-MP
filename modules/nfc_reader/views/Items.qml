@@ -75,7 +75,7 @@ FocusScope {
                 clip: true
                 Text {
                     id: statusText
-                    text: !nfcReaderBackend.readerConnected ? "Reader not connected"
+                    text: !nfcReaderBackend.readerConnected ? qsTr("Reader not connected")
                         : nfcReaderBackend.cardState === "matched" ? "Playing \u25BA"
                         : nfcReaderBackend.cardState === "unmatched" ? "Card not matched"
                         : "Tap a card to play"
@@ -171,7 +171,7 @@ FocusScope {
 
     Text {
         id: footer
-        text: root.hints.back + ":BACK"
+        text: qsTr("%1:BACK").arg(root.hints.back)
         color: root.tertiaryColor
         font.family: root.globalFont
         anchors.bottom: parent.bottom
