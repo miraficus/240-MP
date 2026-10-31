@@ -51,6 +51,6 @@ mpv is a separate process. `MpvController` writes a small translated UI dictiona
 
 ## Validation and remaining review
 
-The Translation checks workflow compiles Linux x86_64 and ARM64, runs lupdate/lrelease, tests locale selection and catalog loading, checks translated toggle behavior, and validates the mpv dictionary fallback. Test catalogs are separate from the unfinished production catalog.
+The Translation checks workflow compiles Linux x86_64 and ARM64, runs lupdate/lrelease, tests locale selection and catalog loading on both architectures, checks translated toggle behavior and QML parsing on desktop Qt 6.7, and validates the mpv dictionary fallback. Ubuntu’s ARM builder has Qt 6.4, so visual-QML tests requiring the upstream QtQuick.Effects module run on the desktop job. Test catalogs are separate from the unfinished production catalog.
 
 This preparation marks the common shell, module UI labels, keyboard footers, backend option labels/errors and the main mpv menus. Before completing a language, review remaining dynamically assembled messages and helper-function return strings (for example media/track descriptions, backend responses and weather-provider text). Do not indiscriminately translate strings: many are protocol values or user/server content. Long/RTL translations and macOS visual behavior still need human verification. Switching language during a running session is intentionally not implemented; cached models, backend state and the external mpv process all pick up the new language on restart.

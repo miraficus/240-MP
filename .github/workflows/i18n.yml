@@ -25,6 +25,17 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
           sudo apt-get update
           sudo apt-get install -y build-essential cmake python3 qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-tools-dev qt6-l10n-tools libssl-dev libsdl2-dev libdrm-dev libpcsclite-dev qml6-module-qttest qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtqml-workerscript lua5.2
+      # AppBar already uses QtQuick.Effects (Qt >= 6.5). Test the actual QML
+      # on the same Qt 6.7 used by upstream's PC release, rather than Ubuntu's 6.4.
+      - name: Install desktop Qt for QML tests
+        if: matrix.arch == 'x86_64'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
       - name: Check generated extraction sources
         run: python3 scripts/update-manifest-translations.py --check
       - name: Configure and update catalogs
@@ -40,7 +51,12 @@ jobs:
           python3 scripts/check-translations.py
           lua5.2 tests/i18n/tst_mpv.lua
           ./build-i18n-tests/i18n_backend_test
-          ./build-i18n-tests/i18n_navigation_test -input tests/i18n -import views
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            ./build-i18n-tests/i18n_navigation_test -input tests/i18n -import views
+            find Main.qml views modules -name '*.qml' -print0 | while IFS= read -r -d '' qml; do
+              "${QT_ROOT_DIR}/bin/qmlformat" "$qml" >/dev/null
+            done
+          fi
       - name: Upload updated catalogs
         uses: actions/upload-artifact@v4.6.2
         with:
