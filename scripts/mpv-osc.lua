@@ -35,6 +35,13 @@ local A_TRANS  = "&HFF&"
 local A_DIM    = "&H99&"  -- 40% opacity for unfocused seek fill
 
 local function get_audio_str()
+    -- Transcoded stream: read track info passed explicitly from QML
+    local transcode_audio = mp.get_opt("transcode-audio")
+    if transcode_audio and transcode_audio ~= "" then
+        if transcode_audio == "Off" then return "(NONE)" end
+        return (transcode_audio:gsub("_", " ")):upper()
+    end
+
     local id = mp.get_property_number("current-tracks/audio/id", 0)
     if id == 0 then return "(NONE)" end
     local title    = (mp.get_property("current-tracks/audio/title", "") or ""):upper()
@@ -52,6 +59,14 @@ local function get_audio_str()
 end
 
 local function get_sub_str()
+    -- Burned-in transcode sub: there is no mpv track to read, so the app passes
+    -- the selected track's name (spaces as underscores) for display.
+    local transcode_sub = mp.get_opt("transcode-sub")
+    if transcode_sub and transcode_sub ~= "" then
+        if transcode_sub == "Off" then return "(NONE)" end
+        return (transcode_sub:gsub("_", " ")):upper()
+    end
+
     local id = mp.get_property_number("current-tracks/sub/id", 0)
     if id == 0 then return "(NONE)" end
     -- External sidecar with an app-provided friendly name (e.g. Jellyfin): use it
@@ -70,9 +85,29 @@ local function get_sub_str()
     return table.concat(parts, " ")
 end
 
+-- Set by the app when the subtitle is burned into the stream and only the module
+-- can change it (Jellyfin transcode): mpv has no sub track to cycle, so the
+-- SUBTITLE button asks the module to re-request the stream instead.
+local sub_cycle   = mp.get_opt("sub-cycle") == "1"
+-- Same for audio when the track is baked into the stream (Jellyfin transcode):
+-- the AUDIO button asks the module to re-request rather than cycling locally.
+local audio_cycle = mp.get_opt("audio-cycle") == "1"
+
 local btn_actions = {
-    function() mp.command("no-osd cycle audio") end,
-    function() mp.command("no-osd cycle sub") end,
+    function()
+        if audio_cycle then
+            mp.commandv("script-message", "cycle-audio")
+        else
+            mp.command("no-osd cycle audio")
+        end
+    end,
+    function()
+        if sub_cycle then
+            mp.commandv("script-message", "cycle-sub")
+        else
+            mp.command("no-osd cycle sub")
+        end
+    end,
     function() mp.command("no-osd cycle-values panscan 0 1") end,
     function() mp.command("quit") end,
     function() mp.command("playlist-prev") end,
@@ -80,6 +115,8 @@ local btn_actions = {
 }
 
 local function has_subtitle_tracks()
+    -- Burned-in transcode subs never appear in the track list.
+    if sub_cycle then return true end
     local tracks = mp.get_property_native("track-list", {})
     for _, t in ipairs(tracks) do
         if t.type == "sub" then return true end
@@ -90,6 +127,10 @@ end
 local function has_playlist()
     return (mp.get_property_number("playlist-count", 1) or 1) > 1
 end
+
+-- Set by MpvController on decode paths where --panscan blanks the video
+-- (Pi 3 overlay path with 1080p Playback ON) — the CROP button would be a no-op.
+local hide_crop = mp.get_opt("hide-crop") == "1"
 
 local function build_left_btns(has_sub, has_pl, bar_w)
     local btns = {}
@@ -102,7 +143,9 @@ local function build_left_btns(has_sub, has_pl, bar_w)
     if has_sub then
         table.insert(btns, {label="SUBTITLE", width=math.floor(bar_w * 0.15625), action=btn_actions[2]})
     end
-    table.insert(btns, {label="CROP", width=math.floor(bar_w * 0.090625), action=btn_actions[3]})
+    if not hide_crop then
+        table.insert(btns, {label="CROP", width=math.floor(bar_w * 0.090625), action=btn_actions[3]})
+    end
     if has_pl then
         table.insert(btns, {label="<", width=math.floor(bar_w * 0.055), action=btn_actions[5]})
         table.insert(btns, {label=">", width=math.floor(bar_w * 0.055), action=btn_actions[6]})
@@ -112,13 +155,16 @@ end
 
 local transcode_offset = tonumber(mp.get_opt("transcode-offset") or "0") or 0
 
--- Latch duration on first valid read; used to detect PTS base shifts during HLS seeking
+-- Latch duration on the first valid read of each file: when Plex restarts an HLS
+-- transcode after rapid seeking, `duration` can spike mid-stream and corrupt the
+-- end-time display. Cleared per file so each playlist item latches its own duration.
 local stable_duration = nil
 mp.observe_property("duration", "number", function(_, value)
     if value and value > 0 and not stable_duration then
         stable_duration = value
     end
 end)
+mp.register_event("start-file", function() stable_duration = nil end)
 
 local function format_time(seconds)
     if not seconds or seconds < 0 then seconds = 0 end
@@ -214,7 +260,7 @@ local function draw_menu()
     end
 
     -- ── Row 3: Buttons ────────────────────────────────────────────
-    -- Left group: AUDIO, [SUBTITLE], CROP
+    -- Left group: [SKIP], AUDIO, [SUBTITLE], [CROP], [< >]
     local stop_idx = #left_btns + 1
     local bx = lm
     for i, btn in ipairs(left_btns) do
@@ -322,7 +368,7 @@ local function toggle_menu()
         mp.remove_key_binding("menu-esc")
         mp.remove_key_binding("menu-bs")
     else
-        -- Tell the volume bar (media-keys.lua) to stand down — the two OSDs
+        -- Tell the volume bar (mpv-media-keys.lua) to stand down — the two OSDs
         -- share the same spot and are mutually exclusive.
         mp.commandv("script-message", "240mp-osd-volume-hide")
         menu_visible = true
@@ -333,21 +379,21 @@ local function toggle_menu()
 
         mp.add_forced_key_binding("UP",    "menu-up",    function() update_nav("up")    end)
         mp.add_forced_key_binding("DOWN",  "menu-down",  function() update_nav("down")  end)
-        mp.add_forced_key_binding("LEFT",  "menu-left",  function() update_nav("left")  end)
-        mp.add_forced_key_binding("RIGHT", "menu-right", function() update_nav("right") end)
+        mp.add_forced_key_binding("LEFT",  "menu-left",  function() update_nav("left")  end, {repeatable = true})
+        mp.add_forced_key_binding("RIGHT", "menu-right", function() update_nav("right") end, {repeatable = true})
         mp.add_forced_key_binding("ENTER", "menu-enter", function() update_nav("enter") end)
         mp.add_forced_key_binding("ESC",   "menu-esc",   toggle_menu)
         mp.add_forced_key_binding("BS",    "menu-bs",    toggle_menu)
     end
 end
 
--- The volume bar (media-keys.lua) broadcasts this when it appears; close the
+-- The volume bar (mpv-media-keys.lua) broadcasts this when it appears; close the
 -- menu so the two OSDs never overlap. toggle_menu() runs the full teardown.
 mp.register_script_message("240mp-osd-menu-hide", function()
     if menu_visible then toggle_menu() end
 end)
 
--- media-keys.lua broadcasts this on seek / chapter changes so the nav menu
+-- mpv-media-keys.lua broadcasts this on seek / chapter changes so the nav menu
 -- pops up to show the new position. Open it if closed; otherwise just redraw
 -- and restart the auto-hide timer.
 mp.register_script_message("240mp-osd-menu-show", function()

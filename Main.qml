@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Window
 
 Window {
@@ -9,6 +8,16 @@ Window {
     y:      Qt.platform.os === "osx" ? macScreenY      : Screen.virtualY
     width:  Qt.platform.os === "osx" ? macScreenWidth  : Screen.width
     height: Qt.platform.os === "osx" ? macScreenHeight : Screen.height
+    // macOS uses manual geometry (the target display chosen by the app-level
+    // "display_index" setting, resolved in main.cpp) + a native fullscreen
+    // call to keep the mpv-over-window layering intact. Everywhere else,
+    // request true fullscreen so a desktop compositor's panel/dock (KDE on the
+    // Steam Deck, labwc on the Pi) is covered rather than left stacked on top;
+    // the Screen.* bindings track the window's screen, so they follow the
+    // display_index move main.cpp performs after load. Headless EGLFS is
+    // already fullscreen, so this is a no-op there.
+    visibility: Qt.platform.os === "osx" ? Window.AutomaticVisibility
+                                         : Window.FullScreen
     visible: true
     color: root.surfaceColor
 
@@ -138,7 +147,7 @@ Window {
         }
 
         // Break declarative bindings on macOS so the C++ NSWindow override
-        // in forceWindowFullScreen() isn't immediately re-fought by QML.
+        // in forceWindowFullScreenOnScreen() isn't immediately re-fought by QML.
         if (Qt.platform.os === "osx") {
             root.x = macScreenX
             root.y = macScreenY
@@ -149,6 +158,16 @@ Window {
     
     FontLoader {
         id: font; source: "assets/fonts/VCR_OSD_MONO_1.001.ttf"
+    }
+    // Unifont fills in glyphs VCR OSD Mono doesn't have (CJK, Hangul, etc.),
+    // it's a bitmap-style font so it actually matches the retro CRT look
+    // instead of a mismatched serif/sans fallback. This Qt build's font value
+    // type has no font.families (checked plugins.qmltypes: family only), so
+    // loading it here just registers it with Qt's fontconfig-backed font
+    // database; Qt's own missing-glyph fallback then picks it up for every
+    // existing font.family: root.globalFont binding with no further changes.
+    FontLoader {
+        id: unifontLoader; source: "assets/fonts/unifont.otf"
     }
     property string globalFont: font.name;
 
@@ -166,6 +185,16 @@ Window {
     // --- SCREEN SAVER STATE ---
     property bool screenSaverActive: false
 
+    // Playback counts as user activity even when no key started it (an NFC
+    // card tap launches mpv directly). If the saver was showing at launch,
+    // nothing key-driven ever reaches its dismiss handler — focus has moved
+    // into the module's player view — so clear it on playback transitions.
+    function dismissScreenSaver() {
+        if (!screenSaverActive) return
+        screenSaverActive = false
+        moduleLoader.forceActiveFocus()
+    }
+
     // --- APP-LEVEL NAV STACK ---
     property var appNavStack: []
     property var appCurrentParams: ({})
@@ -181,11 +210,27 @@ Window {
             if (ms > 0 && !idleTracker.mpvActive) {
                 idleTracker.mpvActive = true
                 idleTracker.resetActivity()
+                root.dismissScreenSaver()
             }
         }
         function onPlaybackEnded(finalPositionMs, finalDurationMs, reason) {
             idleTracker.mpvActive = false
             idleTracker.resetActivity()
+            root.dismissScreenSaver()
+        }
+    }
+
+    // A running user script suppresses the screen saver too — a takeover script
+    // owns the display, and even a console one is legitimately silent for as long
+    // as it takes. Its own flag rather than reusing mpvActive, so ending one
+    // session can't unblock the saver while the other is still going.
+    Connections {
+        target: scriptsBackend
+        function onScriptRunningChanged() {
+            idleTracker.scriptActive = scriptsBackend.scriptBusy
+            idleTracker.resetActivity()
+            if (!scriptsBackend.scriptBusy)
+                root.dismissScreenSaver()
         }
     }
 
@@ -213,7 +258,7 @@ Window {
                         params: root.appCurrentParams,
                         listState: {}
                     })
-                    moduleLoader.setSource(entryPoint, { "navParams": {} })
+                    moduleLoader.setSource(entryPoint, { "navParams": { fromAppStartup: true } })
                 }
             }
         }

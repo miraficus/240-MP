@@ -1,7 +1,14 @@
 #include "MpvController.h"
 #include "../AppCore.h"
+#include "../util/YtDlpLocator.h"
+#include "../util/MpvLocator.h"
+#include "../util/DisplayHandoff.h"
+#include "../util/FontconfigOverride.h"
+#include <QCoreApplication>
+#include <QGuiApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcessEnvironment>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -10,43 +17,14 @@
 #include <QRegularExpression>
 #include <QDebug>
 
-#ifdef Q_OS_LINUX
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <sys/sysmacros.h>
-#include <linux/vt.h>
-#include <string>
-// DRM master ioctls (also provided by xf86drm.h, but define as fallback).
-#ifndef DRM_IOCTL_SET_MASTER
-#define DRM_IOCTL_SET_MASTER   _IO('d', 0x1e)
-#define DRM_IOCTL_DROP_MASTER  _IO('d', 0x1f)
-#endif
-
-// Write a fontconfig override so the mpv subprocess's libass can find custom
-// fonts without needing them installed system-wide.
-static QString writeFontconfigOverride(const QString &fontsDir) {
-    const QString path = QDir::tempPath() + "/240mp-fonts.conf";
-    QFile f(path);
-    if (!f.open(QFile::WriteOnly | QFile::Text))
-        return {};
-    f.write(QString(
-        "<?xml version=\"1.0\"?>\n"
-        "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
-        "<fontconfig>\n"
-        "  <dir>%1</dir>\n"
-        "  <include ignore_missing=\"yes\">/etc/fonts/fonts.conf</include>\n"
-        "</fontconfig>\n"
-    ).arg(fontsDir).toUtf8());
-    return path;
-}
-#endif
-
-MpvController::MpvController(const QString &appRoot, AppCore *appCore, QObject *parent)
+MpvController::MpvController(const QString &appRoot, const QString &dataRoot,
+                             AppCore *appCore, DisplayHandoff *handoff,
+                             QObject *parent)
     : QObject(parent)
     , m_appCore(appCore)
+    , m_handoff(handoff)
     , m_appRoot(appRoot)
+    , m_dataRoot(dataRoot)
     , m_socketPath(QDir::tempPath() + "/240mp-mpv.sock")
     , m_inputConfPath(QDir::tempPath() + "/240mp-input.conf")
     , m_logFilePath(QDir::tempPath() + "/240mp-mpv.log")
@@ -54,7 +32,7 @@ MpvController::MpvController(const QString &appRoot, AppCore *appCore, QObject *
 {
     m_videoProfile = detectVideoProfile();
     qInfo("[MpvController] video profile: %s",
-          m_videoProfile == VideoProfile::Pi4       ? "Pi 4 — drm + v4l2m2m-copy"
+          m_videoProfile == VideoProfile::Pi4       ? "Pi 4 — drm + drm-copy,v4l2m2m-copy"
         : m_videoProfile == VideoProfile::Pi3       ? "Pi 3 — gpu/drm + v4l2m2m (zero-copy)"
         : m_videoProfile == VideoProfile::PiFullKms ? "Pi 5 (Full KMS) — drm + auto-safe"
                                                     : "generic");
@@ -68,8 +46,8 @@ MpvController::MpvController(const QString &appRoot, AppCore *appCore, QObject *
     }
 
     m_hasMpvOscScript     = QFile::exists(m_appRoot + "/scripts/mpv-osc.lua");
-    m_hasAmbientOscScript = QFile::exists(m_appRoot + "/scripts/ambient-osc.lua");
-    m_hasMediaKeysScript  = QFile::exists(m_appRoot + "/scripts/media-keys.lua");
+    m_hasAmbientOscScript = QFile::exists(m_appRoot + "/scripts/mpv-osc-ambient.lua");
+    m_hasMediaKeysScript  = QFile::exists(m_appRoot + "/scripts/mpv-media-keys.lua");
 
     m_ipc = new QLocalSocket(this);
     connect(m_ipc, &QLocalSocket::connected, this, [this] {
@@ -110,6 +88,13 @@ MpvController::~MpvController() {
         m_process->terminate();
         m_process->waitForFinished(2000);
     }
+    // Quitting mid-playback on a headless Pi used to leave the VT switched away
+    // and DRM master dropped — a black screen or a stray text console. Restore
+    // synchronously here: terminate() above has already released mpv's hold on
+    // the device, and we're exiting, so there's no point deferring 200 ms.
+    // A no-op if mpv wasn't holding the screen (any platform, any mode).
+    if (m_handoff)
+        m_handoff->releaseNow(QLatin1String(kHandoffOwner));
 }
 
 void MpvController::loadAndPlay(const QString &url, float startSeconds,
@@ -120,7 +105,8 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
                                  const QString &plexToken, bool muteAudio,
                                  const QString &oscMode, bool shuffle,
                                  const QStringList &subTitles, float imageDurationSec,
-                                 bool imageContent, const QStringList &extraArgs, const QString &jellyfinToken) {
+                                 bool imageContent, const QStringList &extraArgs, const QString &jellyfinToken,
+                                 const QStringList &extraUrls) {
     if (m_process) {
         m_process->disconnect();
         if (m_process->state() != QProcess::NotRunning) {
@@ -138,22 +124,14 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     m_playlistPos = -1;
     m_paused      = false;
     m_lastEndFileReason.clear();
+    m_pendingStartClear = false;
 
-#ifdef Q_OS_MACOS
-    // .app bundles launched via double-click get a minimal PATH that excludes
-    // Homebrew. Prepend known install locations so findExecutable works.
-    {
-        const QStringList extraPaths = { "/opt/homebrew/bin", "/usr/local/bin" };
-        const QStringList currentPath = qEnvironmentVariable("PATH").split(":");
-        for (const QString &p : extraPaths) {
-            if (!currentPath.contains(p))
-                qputenv("PATH", (p + ":" + qEnvironmentVariable("PATH")).toUtf8());
-        }
-    }
-#endif
-    const QString bin = QStandardPaths::findExecutable("mpv");
+    // Bundled sibling first, then PATH — see util/MpvLocator.h. Shared with the
+    // audio-only spawners so a bundled-mpv or user-drop-in change lands in one
+    // place.
+    const QString bin = mpvbin::locate();
     if (bin.isEmpty()) {
-        qWarning("[MpvController] mpv not found in PATH");
+        qWarning("[MpvController] mpv not found (no bundled sibling, none on PATH)");
         QTimer::singleShot(0, this, [this]() {
             emit playbackEnded(0, 0, QStringLiteral("stopped"));
         });
@@ -161,7 +139,7 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     }
 
     const bool hasOscScript = (oscMode == "ambient") ? m_hasAmbientOscScript : m_hasMpvOscScript;
-    const QString oscScript = m_appRoot + "/scripts/" + ((oscMode == "ambient") ? "ambient-osc.lua" : "mpv-osc.lua");
+    const QString oscScript = m_appRoot + "/scripts/" + ((oscMode == "ambient") ? "mpv-osc-ambient.lua" : "mpv-osc.lua");
 
     // Stamp the log file so each session is identifiable when tailing over SSH.
     // Owner-only perms: mpv logs its command line (incl. auth headers) at verbose
@@ -183,8 +161,12 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     }
 
     QStringList args;
-    args << url
-         << QString("--input-ipc-server=%1").arg(m_socketPath)
+    args << url;
+    // Additional playlist entries, straight after the primary url — mpv builds its
+    // playlist from every non-option argument. These must be absolute paths or URLs
+    // (so they can't be mistaken for flags); pass mpv options via extraArgs instead.
+    args << extraUrls;
+    args << QString("--input-ipc-server=%1").arg(m_socketPath)
          << QString("--log-file=%1").arg(m_logFilePath)
          << (hasOscScript ? "--osc=no" : "--osc=yes")
          << "--osd-level=0";
@@ -195,7 +177,7 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     // Media-key handling + themed volume bar — loaded for every mode so HID
     // media keys work anytime mpv is playing, not just inside a given module.
     if (m_hasMediaKeysScript)
-        args << QString("--script=%1").arg(m_appRoot + "/scripts/media-keys.lua");
+        args << QString("--script=%1").arg(m_appRoot + "/scripts/mpv-media-keys.lua");
 
     // Screen saver Lua script — only loaded when the user has opted in via the
     // screensaver_timeout setting (a positive number of seconds; "OFF" parses
@@ -203,7 +185,7 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     int screensaverTimeout = 0;
     if (m_appCore) {
         const int n = m_appCore->get_setting(QString(), "screensaver_timeout").toString().toInt();
-        const QString ssScript = m_appRoot + "/scripts/screensaver.lua";
+        const QString ssScript = m_appRoot + "/scripts/mpv-screensaver.lua";
         if (n > 0 && QFile::exists(ssScript)) {
             screensaverTimeout = n;
             args << QString("--script=%1").arg(ssScript);
@@ -216,15 +198,17 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     // nudges a render-affecting property on each playlist advance to force a
     // page-flip. Loaded only for image content, so video playback is untouched.
     if (imageContent) {
-        const QString slideshowScript = m_appRoot + "/scripts/slideshow-redraw.lua";
+        const QString slideshowScript = m_appRoot + "/scripts/mpv-slideshow-redraw.lua";
         if (QFile::exists(slideshowScript))
             args << QString("--script=%1").arg(slideshowScript);
     }
 
     if (playlistStart >= 0)
         args << QString("--playlist-start=%1").arg(playlistStart);
-    if (startSeconds > 0.5f)
+    if (startSeconds > 0.5f) {
         args << QString("--start=%1").arg(double(startSeconds), 0, 'f', 3);
+        m_pendingStartClear = true;
+    }
     if (audioTrack > 0)
         args << QString("--aid=%1").arg(audioTrack);
     for (const QString &sf : subFiles)
@@ -248,11 +232,24 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     if (!subLangs.isEmpty())
         args << QString("--slang=%1").arg(subLangs.join(QStringLiteral(",")));
 
+    // yt-dlp hook intercepts HTTP media URLs and can break Plex/Jellyfin
+    // playback with spurious 401/400 errors — disabled unless the caller
+    // explicitly opts in via extraArgs (e.g. YouTube passes --ytdl=yes).
+    bool ytdlEnabled = false;
+    for (const QString &a : extraArgs) {
+        if (a == QLatin1String("--ytdl") || a.startsWith(QLatin1String("--ytdl=")))
+            ytdlEnabled = true;
+    }
+
     QStringList scriptOpts;
     if (transcodeOffsetSec > 0.5f)
         scriptOpts << QString("transcode-offset=%1").arg(double(transcodeOffsetSec), 0, 'f', 3);
     if (screensaverTimeout > 0)
         scriptOpts << QString("screensaver_timeout=%1").arg(screensaverTimeout);
+    // Tell the OSC scripts to hide their CROP button on decode paths where
+    // --panscan would blank the video (Pi 3 overlay path, 1080p Playback ON).
+    if (cropUnavailable())
+        scriptOpts << QStringLiteral("hide-crop=1");
 
     // Hand the OSC a map of external sub-file URL -> friendly track name so it can show
     // the real subtitle name. mpv otherwise titles an external sub from its URL basename
@@ -274,6 +271,17 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
             scriptOpts << QString("subinfo-file=%1").arg(m_subInfoPath);
         }
     }
+    // Point mpv's ytdl_hook at the same user-updatable yt-dlp the app resolves,
+    // so both agree on one copy even when it isn't on the global PATH (the
+    // SteamOS story). Merged into the single --script-opts below — a second
+    // --script-opts flag would replace, not append, clobbering the entries above.
+    // The comma guard mirrors the subinfo-file constraint (a path with a comma
+    // would break the join); realistically never hit.
+    if (ytdlEnabled) {
+        const QString ytdlPath = ytdlp::locate(m_dataRoot);
+        if (!ytdlPath.isEmpty() && !ytdlPath.contains(QLatin1Char(',')))
+            scriptOpts << QString("ytdl_hook-ytdl_path=%1").arg(ytdlPath);
+    }
     if (!scriptOpts.isEmpty())
         args << QString("--script-opts=%1").arg(scriptOpts.join(QStringLiteral(",")));
 
@@ -288,15 +296,8 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
         args << QString("--image-display-duration=%1").arg(double(imageDurationSec), 0, 'f', 1);
     if (muteAudio)
         args << QStringLiteral("--no-audio");
-    // yt-dlp hook intercepts HTTP media URLs and can break Plex/Jellyfin
-    // playback with spurious 401/400 errors — disabled unless the caller
-    // explicitly opts in via extraArgs (e.g. YouTube passes --ytdl=yes).
-    bool ytdlOverridden = false;
-    for (const QString &a : extraArgs) {
-        if (a == QLatin1String("--ytdl") || a.startsWith(QLatin1String("--ytdl=")))
-            ytdlOverridden = true;
-    }
-    if (!ytdlOverridden)
+    // See ytdlEnabled above: default the hook off unless the caller opted in.
+    if (!ytdlEnabled)
         args << QStringLiteral("--ytdl=no");
     args << extraArgs;
     if (!plexToken.isEmpty()) {
@@ -315,11 +316,17 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     // Auto Crop: start with panscan=1 unless the current decode path can't crop.
     // The Pi3 overlay (smooth) path blanks video under panscan, so suppress there —
     // matching the 1080p Playback trade-off. The OSC CROP button still toggles live.
-    if (autoCropEnabled()) {
-        const bool cropSafe = !(m_videoProfile == VideoProfile::Pi3 && smoothPlaybackEnabled());
-        if (cropSafe)
-            args << QStringLiteral("--panscan=1");
-    }
+    if (autoCropEnabled() && !cropUnavailable())
+        args << QStringLiteral("--panscan=1");
+
+    // Video Levels: the RGB range mpv converts YUV into. Emitted only when the
+    // user has overridden it, so "Auto" leaves both mpv's own default and
+    // anything in their mpv.conf untouched. Sits before appendVideoArgs so an
+    // explicit --video-output-levels inside the mpv_video_args override still
+    // wins (later on the command line).
+    const QString outputLevels = videoOutputLevels();
+    if (!outputLevels.isEmpty())
+        args << QStringLiteral("--video-output-levels=%1").arg(outputLevels);
 
     m_process = new QProcess(this);
     m_process->setProcessChannelMode(QProcess::MergedChannels);
@@ -332,24 +339,25 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
             qWarning("[mpv] %s", out.trimmed().constData());
     });
 
-    m_headlessMode = detectHeadlessMode();
+    m_headlessMode = DisplayHandoff::isHeadless();
     if (m_headlessMode) {
         {
             QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
             env.insert("APP_ROOT", m_appRoot);
 #ifdef Q_OS_LINUX
-            const QString fcConf = writeFontconfigOverride(m_appRoot + "/assets/fonts");
+            const QString fcConf = fcoverride::write(m_appRoot + "/assets/fonts");
             if (!fcConf.isEmpty())
                 env.insert("FONTCONFIG_FILE", fcConf);
 #endif
             m_process->setProcessEnvironment(env);
         }
 
-        if (m_previousVt > 0) {
+        if (m_handoff && m_handoff->isHeldBy(QLatin1String(kHandoffOwner))) {
             // loadAndPlay called while already in headless mode (e.g. rapid
-            // double call from Plex Player). m_previousVt already holds Qt's
-            // real VT — do NOT overwrite it with the current free VT. The old
-            // mpv was terminated above; just launch the replacement directly.
+            // double call from Plex Player). The hand-off already holds Qt's
+            // real VT — do NOT acquire again, which would overwrite it with the
+            // free VT we are currently on. The old mpv was terminated above;
+            // just launch the replacement directly.
             args << QString("--input-conf=%1").arg(m_inputConfPath)
                  << "--video-sync=audio";
             appendVideoArgs(args);
@@ -359,35 +367,29 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
             return;
         }
 
-        // First entry into headless mode.
+        // First entry into headless mode: hand the display to mpv. The VT/DRM
+        // ordering that makes this work lives in DisplayHandoff::acquire().
         //
-        // On kernels 5.8+, drmSetMaster() returns EACCES for non-root if any
-        // other process holds DRM master — even after a VT switch, because Qt
-        // EGLFS runs in VT_AUTO mode and never calls drmDropMaster() itself.
+        // mpv deliberately does not check savedStateValid() here — playback has
+        // always proceeded even when the CRTC state couldn't be captured.
         //
-        // Fix: switch to a free VT first (suspends Qt's render thread), then
-        // drop Qt's DRM master so mpv can acquire it cleanly.
-
-        m_previousVt = getActiveVt();
-        m_qtDrmFd    = -1;
-
-#ifdef Q_OS_LINUX
-        // Switch VT first — suspends Qt's render thread via the kernel's VT
-        // switch signal before DRM master is dropped, eliminating the race
-        // that causes "Failed to commit atomic request" log noise.
-        switchToVt(findFreeVt());
-
-        m_qtDrmFd = findQtDrmFd();
-        if (m_qtDrmFd < 0) {
-            qWarning("[MpvController] Could not find Qt DRM fd");
-        } else {
-            qDebug("[MpvController] DRM master dropped (fd %d)", m_qtDrmFd);
-            // Save the current CRTC state so we can restore it exactly after
-            // mpv exits. mpv's atomic cleanup disables the CRTC (CRTC_ACTIVE=0);
-            // without this restore, Qt EGLFS gets EINVAL on its next page flip.
-            saveDrmCrtcState(m_qtDrmFd);
+        // A refusal (-1) means another subsystem already owns the screen — e.g. a
+        // takeover script is running and an NFC tap asked for playback. Launching
+        // anyway would put mpv on a display it does not own, and its later release
+        // would be rejected as an owner mismatch. Bail out the same way a missing
+        // mpv binary does, with a deferred synthetic end so the caller's Player
+        // view doesn't sit there waiting for a signal that never comes.
+        if (m_handoff && m_handoff->acquire(QLatin1String(kHandoffOwner)) < 0) {
+            qWarning("[MpvController] Cannot start playback: %s has the screen",
+                     qPrintable(m_handoff->currentOwner()));
+            m_headlessMode = false;
+            m_process->deleteLater();
+            m_process = nullptr;
+            QTimer::singleShot(0, this, [this]() {
+                emit playbackEnded(0, 0, QStringLiteral("failed"));
+            });
+            return;
         }
-#endif
 
         args << QString("--input-conf=%1").arg(m_inputConfPath)
              << "--video-sync=audio";
@@ -397,15 +399,21 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
         m_connectTimer->start();
     } else {
         // Desktop: X11 or Wayland compositor present.
-        // Remove WAYLAND_DISPLAY so mpv uses X11/Xwayland — the Wayland VO
-        // stalls waiting for wl_surface frame-done callbacks from labwc.
+        // Prefer X11/Xwayland for mpv — the Wayland VO stalls waiting for
+        // wl_surface frame-done callbacks from labwc (the Pi compositor). But
+        // only strip WAYLAND_DISPLAY when there is a DISPLAY to fall back to:
+        // on a pure-Wayland session with no Xwayland DISPLAY exported to us
+        // (e.g. the Steam Deck's KDE session launched from the file manager),
+        // removing it would leave mpv with no output at all and it exits
+        // instantly. In that case keep Wayland so mpv can open a window.
         // --no-native-fs avoids macOS Space-transition delays that can
         // prevent early OSD renders from appearing.
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("APP_ROOT", m_appRoot);
-        env.remove("WAYLAND_DISPLAY");
+        if (!qEnvironmentVariable("DISPLAY").trimmed().isEmpty())
+            env.remove("WAYLAND_DISPLAY");
 #ifdef Q_OS_LINUX
-        const QString fcConf = writeFontconfigOverride(m_appRoot + "/assets/fonts");
+        const QString fcConf = fcoverride::write(m_appRoot + "/assets/fonts");
         if (!fcConf.isEmpty())
             env.insert("FONTCONFIG_FILE", fcConf);
 #endif
@@ -413,6 +421,34 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
         args << QString("--input-conf=%1").arg(m_inputConfPath)
              << "--video-sync=audio"
              << "--fullscreen" << "--no-native-fs";
+        // Playback follows the UI's display (app-level "display_index"). Only
+        // when a non-default display is configured, so the default command
+        // line is untouched. Which form of the option works depends on the
+        // windowing system mpv itself ends up on:
+        //  - macOS: numeric --fs-screen indexes NSScreen.screens, the same
+        //    ordering Qt's screen list (and display_index) already relies on.
+        //  - X11 / native Wayland: --fs-screen-name matched against the RandR
+        //    output / wl_output name, which is exactly QScreen::name() there.
+        //    (Numeric would mean Xinerama order, not guaranteed to match Qt's.)
+        //  - Qt on Wayland but DISPLAY set: the env block above stripped
+        //    WAYLAND_DISPLAY, so mpv runs on Xwayland where RandR outputs are
+        //    named "XWAYLAND0..." and can't match QScreen::name(). Fall back
+        //    to numeric — Xwayland's screen order follows wl_output
+        //    announcement order like Qt's list does. Best effort; on a
+        //    mismatch mpv warns and uses the current screen.
+        if (m_displayIndex > 0) {
+#ifdef Q_OS_MACOS
+            args << QString("--fs-screen=%1").arg(m_displayIndex);
+#else
+            const bool mpvOnXwayland =
+                QGuiApplication::platformName() == QLatin1String("wayland")
+                && !qEnvironmentVariable("DISPLAY").trimmed().isEmpty();
+            if (mpvOnXwayland || m_displayScreenName.isEmpty())
+                args << QString("--fs-screen=%1").arg(m_displayIndex);
+            else
+                args << QString("--fs-screen-name=%1").arg(m_displayScreenName);
+#endif
+        }
         appendVideoArgs(args);
 #ifdef Q_OS_MACOS
         // mpv runs as a separate process and can't see the app-bundle font via
@@ -479,12 +515,27 @@ void MpvController::onIpcReadyRead() {
             // so onProcessFinished can distinguish a natural finish from a quit.
             if (event == "end-file") {
                 m_lastEndFileReason = obj["reason"].toString();
+            } else if (event == "playback-restart" && m_pendingStartClear) {
+                // --start is a global option that mpv re-applies on *every* file load,
+                // and --loop-playlist reloads its entries on wrap. Left set, a resumed
+                // file would restart at the resume offset on every loop lap (and every
+                // later playlist entry would start there too) instead of at the
+                // beginning. mpv only reads `start` when it loads a file, and
+                // playback-restart means the initial seek is already done — so clearing
+                // it here leaves the current playback alone while every subsequent load
+                // begins at 0. Guarded so it fires once per session, not on every seek.
+                m_pendingStartClear = false;
+                sendCommand({"set_property", "start", "none"});
             } else if (event == "client-message") {
                 const QJsonArray args = obj["args"].toArray();
                 if (args.size() > 0) {
                     const QString msg = args[0].toString();
                     if (msg == "skip-segment")
                         emit skipRequested();
+                    else if (msg == "cycle-sub")
+                        emit subtitleCycleRequested();
+                    else if (msg == "cycle-audio")
+                        emit audioCycleRequested();
                 }
             }
             continue;
@@ -548,46 +599,18 @@ void MpvController::onProcessFinished() {
     else if (m_lastEndFileReason == "eof") reason = QStringLiteral("eof");
     else                                   reason = QStringLiteral("stopped");
 
-    if (m_headlessMode) {
-        // Defer DRM restore and VT switch by 200 ms. mpv's last KMS atomic
-        // commit may still be pending in the vc4 driver at the moment the
-        // process exits. If EGLFS tries to commit before that pending flip
-        // is signaled, it gets EBUSY repeatedly, drops its DRM pipeline, and
-        // the kernel falls back to showing the text console on Qt's VT.
-        // 200 ms is more than three VSync periods at 60 Hz — enough to clear
-        // any in-flight commit without a perceptible delay for the user.
-        QTimer::singleShot(200, this, [this, pos, dur, reason]() {
-            doHeadlessRestore(pos, dur, reason);
+    if (m_headlessMode && m_handoff) {
+        // DisplayHandoff defers the DRM restore and VT switch (200 ms by
+        // default) because mpv's last KMS atomic commit may still be pending in
+        // the vc4 driver at the moment the process exits.
+        m_handoff->releaseDeferred(QLatin1String(kHandoffOwner),
+                                   [this, pos, dur, reason]() {
+            m_headlessMode = false;
+            emit playbackEnded(pos, dur, reason);
         });
     } else {
         emit playbackEnded(pos, dur, reason);
     }
-}
-
-void MpvController::doHeadlessRestore(int pos, int dur, const QString &reason) {
-#ifdef Q_OS_LINUX
-    if (m_qtDrmFd >= 0) {
-        if (::ioctl(m_qtDrmFd, DRM_IOCTL_SET_MASTER, 0) < 0) {
-            qWarning("[MpvController] drmSetMaster failed: %s", strerror(errno));
-        } else {
-            qDebug("[MpvController] DRM master restored (fd %d)", m_qtDrmFd);
-            // Restore CRTC to its pre-mpv state using legacy drmModeSetCrtc.
-            // This re-enables the CRTC with the original mode and Qt's last
-            // framebuffer, so EGLFS's first atomic page flip succeeds instead
-            // of getting EINVAL from a disabled CRTC.
-            restoreDrmCrtcState(m_qtDrmFd);
-        }
-        m_qtDrmFd = -1;
-    }
-#endif
-    if (m_previousVt > 0) {
-        qDebug("[MpvController] Switching back to VT %d", m_previousVt);
-        int prevVt = m_previousVt;
-        m_previousVt = -1;
-        switchToVt(prevVt);
-    }
-    m_headlessMode = false;
-    emit playbackEnded(pos, dur, reason);
 }
 
 void MpvController::sendCommand(const QJsonArray &args) {
@@ -599,14 +622,6 @@ void MpvController::sendCommand(const QJsonArray &args) {
     QJsonObject cmd;
     cmd["command"] = args;
     m_ipc->write(QJsonDocument(cmd).toJson(QJsonDocument::Compact) + "\n");
-}
-
-bool MpvController::detectHeadlessMode() const {
-#ifdef Q_OS_LINUX
-    return qgetenv("DISPLAY").isEmpty() && qgetenv("WAYLAND_DISPLAY").isEmpty();
-#else
-    return false;
-#endif
 }
 
 MpvController::VideoProfile MpvController::detectVideoProfile() const {
@@ -653,7 +668,7 @@ void MpvController::appendVideoArgs(QStringList &args) const {
             // jitters into visible 24p judder. The copy + zimg downscale costs more
             // CPU (~50-70% across 4 cores) but the Pi4 has the headroom, and crop
             // (--panscan) works because frames go through the normal scaler.
-            args << "--vo=drm" << "--hwdec=v4l2m2m-copy";
+            args << "--vo=drm" << "--hwdec=drm-copy,v4l2m2m-copy";
         } else if (m_videoProfile == VideoProfile::Pi3) {
             // Pi 3B/3B+: too weak for the copy + software-scale path above (it pegs
             // all four cores and gets choppy). Zero-copy v4l2m2m hands decoded frames
@@ -668,18 +683,35 @@ void MpvController::appendVideoArgs(QStringList &args) const {
             else
                 args << "--vo=drm" << "--hwdec=v4l2m2m-copy";
         } else {
-            // Pi 5 (Full KMS) and the safe fallback for unknown headless Linux.
-            // --monitorpixelaspect=0.82 corrects non-square pixel aspect on
-            // composite CRTs (704×432 on 4:3). Pure math, zero rendering cost.
-            args << "--vo=drm" << "--hwdec=auto-safe"
-                 << "--monitorpixelaspect=0.82";
+            // Pi 5 (Full KMS) and a safe fallback for unknown headless Linux for now.
+            // Note: Sometimes on Pi5+composite CRTs the Pi5 reports its composite raster 
+            // inconsistently (sometimes a narrow 704×432 instead of the standard 720×480i)
+            // this can be accomodated for in mpv.conf via a monitorpixelaspect property or
+            // in cmdline.txt/config.txt at the OS level vs hardcoding something here.
+            args << "--vo=drm" << "--hwdec=auto-safe";
         }
     } else {
-#ifdef Q_OS_MACOS
+#if defined(Q_OS_MACOS)
         // Apple Silicon: enable VideoToolbox HW decode (mpv's default is none).
         args << "--hwdec=videotoolbox";
+#elif defined(Q_OS_LINUX)
+        // Desktop compositor (SteamDeck gamescope / KDE, x86_64 Intel/AMD): mpv
+        // sets no hwdec by default, so decode falls back to software. This is an
+        // explicit priority list rather than auto-safe because auto-safe also
+        // considers Vulkan video decode, and on a host where neither NVDEC nor
+        // VA-API can initialise it walks all the way down to that: on Batocera
+        // with an NVIDIA GPU (no usable nvidia_drv_video.so, "Could not create
+        // device" for cuda) mpv picked h264-vulkan, presented exactly one frame
+        // and then deadlocked with the demuxer still buffering — a hard freeze
+        // needing SIGKILL. The Vulkan *output* path is fine and stays in use; only
+        // Vulkan decoding is excluded. VA-API still wins on the Deck's AMD APU and
+        // on Intel/AMD, NVDEC covers NVIDIA where it actually initialises, the
+        // -copy variants catch hosts whose VO interop is unavailable, and the
+        // trailing "no" degrades to software instead of hanging.
+        // Fully overridable via the mpv_video_args setting handled above.
+        args << "--hwdec=vaapi,nvdec,vaapi-copy,nvdec-copy,no";
 #endif
-        // Other desktop (X11/Wayland dev): leave mpv's defaults untouched.
+        // Any other desktop: leave mpv's defaults untouched.
     }
 }
 
@@ -694,6 +726,11 @@ bool MpvController::smoothPlaybackEnabled() const {
     return v.toString().compare(QStringLiteral("Off"), Qt::CaseInsensitive) != 0;
 }
 
+void MpvController::setTargetDisplay(int index, const QString &screenName) {
+    m_displayIndex      = index;
+    m_displayScreenName = screenName;
+}
+
 bool MpvController::autoCropEnabled() const {
     // Default OFF: only an explicit "On" opts in. Stored by Settings as a string
     // ("On"/"Off") via the list_single row, so compare on the string form.
@@ -703,6 +740,28 @@ bool MpvController::autoCropEnabled() const {
     return v.toString().compare(QStringLiteral("On"), Qt::CaseInsensitive) == 0;
 }
 
+QString MpvController::videoOutputLevels() const {
+    // Default "Auto" → no flag at all, leaving mpv's own default (full-range RGB
+    // out) and anything the user set in mpv.conf in place. Stored by Settings as
+    // a string ("Auto"/"Limited"/"Full") via the list_single row, so compare on
+    // the string form.
+    if (!m_appCore)
+        return {};
+    const QString v = m_appCore->get_setting(QString(), "video_output_levels").toString();
+    if (v.compare(QStringLiteral("Limited"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("limited");
+    if (v.compare(QStringLiteral("Full"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("full");
+    return {};
+}
+
+bool MpvController::cropUnavailable() const {
+    // The Pi 3 smooth (overlay-plane) path is the one decode path that can't
+    // crop/zoom: --panscan blanks the video there. (Ignores the mpv_video_args
+    // override, same as the auto-crop gate — the setting still reflects intent.)
+    return m_videoProfile == VideoProfile::Pi3 && smoothPlaybackEnabled();
+}
+
 bool MpvController::hasSmoothPlaybackTradeoff() const {
     // Only the Pi 3 overlay path sacrifices crop/zoom for smoothness. Every other
     // profile (Pi 4 copy path, Pi 5/generic --vo=drm, desktop) can already crop, so
@@ -710,144 +769,3 @@ bool MpvController::hasSmoothPlaybackTradeoff() const {
     return m_videoProfile == VideoProfile::Pi3;
 }
 
-int MpvController::getActiveVt() const {
-#ifdef Q_OS_LINUX
-    QFile f("/sys/class/tty/tty0/active");
-    if (!f.open(QIODevice::ReadOnly)) return -1;
-    const QString name = QString::fromLatin1(f.readAll()).trimmed();
-    bool ok;
-    int n = name.mid(3).toInt(&ok);
-    return ok ? n : -1;
-#else
-    return -1;
-#endif
-}
-
-int MpvController::findFreeVt() const {
-#ifdef Q_OS_LINUX
-    int fd = ::open("/dev/tty0", O_WRONLY);
-    if (fd < 0) return 7;
-    int n = -1;
-    ::ioctl(fd, VT_OPENQRY, &n);
-    ::close(fd);
-    return (n > 0) ? n : 7;
-#else
-    return -1;
-#endif
-}
-
-void MpvController::switchToVt(int vt) {
-#ifdef Q_OS_LINUX
-    int fd = ::open("/dev/tty0", O_WRONLY);
-    if (fd < 0) {
-        qWarning("[MpvController] switchToVt %d: open /dev/tty0 failed: %s", vt, strerror(errno));
-        return;
-    }
-    if (::ioctl(fd, VT_ACTIVATE, vt) < 0)
-        qWarning("[MpvController] VT_ACTIVATE %d failed: %s", vt, strerror(errno));
-    if (::ioctl(fd, VT_WAITACTIVE, vt) < 0)
-        qWarning("[MpvController] VT_WAITACTIVE %d failed: %s", vt, strerror(errno));
-    ::close(fd);
-#else
-    Q_UNUSED(vt)
-#endif
-}
-
-int MpvController::findQtDrmFd() const {
-#ifdef Q_OS_LINUX
-    // Scan the process's open file descriptors for Qt's DRM primary card
-    // device. DRM primary nodes have major=226, minor 0-63 (card0, card1…).
-    // We try DRM_IOCTL_DROP_MASTER on each candidate — it succeeds only on
-    // the fd that currently holds DRM master, which tells us it's Qt's fd.
-    QDir fdDir("/proc/self/fd");
-    const QStringList entries = fdDir.entryList(QDir::Files | QDir::System);
-    for (const QString &entry : entries) {
-        bool ok;
-        int fd = entry.toInt(&ok);
-        if (!ok) continue;
-        struct stat st;
-        if (::fstat(fd, &st) < 0) continue;
-        if (!S_ISCHR(st.st_mode)) continue;
-        if (major(st.st_rdev) != 226) continue;   // not a DRM device
-        if (minor(st.st_rdev) >= 64) continue;    // render node, not primary card
-        // Found a DRM primary fd — try to drop master; if it works, this is it.
-        if (::ioctl(fd, DRM_IOCTL_DROP_MASTER, 0) == 0)
-            return fd;
-    }
-    return -1;
-#else
-    return -1;
-#endif
-}
-
-#ifdef Q_OS_LINUX
-void MpvController::saveDrmCrtcState(int fd) {
-    m_savedDrm = {};
-
-    drmModeResPtr res = drmModeGetResources(fd);
-    if (!res) {
-        qWarning("[MpvController] saveDrmCrtcState: drmModeGetResources failed");
-        return;
-    }
-
-    for (int i = 0; i < res->count_crtcs && !m_savedDrm.valid; ++i) {
-        drmModeCrtcPtr crtc = drmModeGetCrtc(fd, res->crtcs[i]);
-        if (!crtc) continue;
-
-        if (crtc->mode_valid) {
-            m_savedDrm.crtcId = crtc->crtc_id;
-            m_savedDrm.fbId   = crtc->buffer_id;
-            m_savedDrm.x      = crtc->x;
-            m_savedDrm.y      = crtc->y;
-            m_savedDrm.mode   = crtc->mode;
-
-            // Find the connector whose encoder is driving this CRTC
-            for (int j = 0; j < res->count_connectors; ++j) {
-                drmModeConnectorPtr conn = drmModeGetConnector(fd, res->connectors[j]);
-                if (!conn) continue;
-                if (conn->encoder_id) {
-                    drmModeEncoderPtr enc = drmModeGetEncoder(fd, conn->encoder_id);
-                    if (enc) {
-                        if (enc->crtc_id == m_savedDrm.crtcId) {
-                            m_savedDrm.connectorId = conn->connector_id;
-                            m_savedDrm.valid = true;
-                        }
-                        drmModeFreeEncoder(enc);
-                    }
-                }
-                drmModeFreeConnector(conn);
-                if (m_savedDrm.valid) break;
-            }
-        }
-        drmModeFreeCrtc(crtc);
-    }
-    drmModeFreeResources(res);
-
-    if (m_savedDrm.valid)
-        qDebug("[MpvController] Saved CRTC %u connector %u mode %dx%d@%d",
-               m_savedDrm.crtcId, m_savedDrm.connectorId,
-               m_savedDrm.mode.hdisplay, m_savedDrm.mode.vdisplay,
-               m_savedDrm.mode.vrefresh);
-    else
-        qWarning("[MpvController] Could not save CRTC state");
-}
-
-void MpvController::restoreDrmCrtcState(int fd) {
-    if (!m_savedDrm.valid) return;
-
-    int ret = drmModeSetCrtc(fd,
-                              m_savedDrm.crtcId,
-                              m_savedDrm.fbId,
-                              m_savedDrm.x, m_savedDrm.y,
-                              &m_savedDrm.connectorId, 1,
-                              &m_savedDrm.mode);
-    if (ret < 0)
-        qWarning("[MpvController] drmModeSetCrtc restore failed: %s", strerror(errno));
-    else
-        qDebug("[MpvController] CRTC restored (mode %dx%d@%d)",
-               m_savedDrm.mode.hdisplay, m_savedDrm.mode.vdisplay,
-               m_savedDrm.mode.vrefresh);
-
-    m_savedDrm.valid = false;
-}
-#endif

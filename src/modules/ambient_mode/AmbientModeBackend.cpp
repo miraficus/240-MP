@@ -1,4 +1,5 @@
 #include "AmbientModeBackend.h"
+#include "../../util/MpvLocator.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -39,9 +40,10 @@ QString AmbientModeBackend::mediaRoot() const
 
 void AmbientModeBackend::setMediaRoot(const QString &path)
 {
-    m_mediaRoot = path;
-    QDir().mkpath(path);
-    qDebug("[AmbientMode] media root: %s", qPrintable(path));
+    // An empty (reset) setting means back to the dataRoot/ambient default.
+    m_mediaRoot = path.isEmpty() ? m_dataRoot + "/ambient" : path;
+    QDir().mkpath(m_mediaRoot);
+    qDebug("[AmbientMode] media root: %s", qPrintable(m_mediaRoot));
 }
 
 QVariantList AmbientModeBackend::scanFiles(const QStringList &extensions) const
@@ -71,37 +73,41 @@ QVariantList AmbientModeBackend::getAudioFiles() const
     return scanFiles(kAudioExts);
 }
 
-void AmbientModeBackend::startAudio(const QString &path)
+void AmbientModeBackend::startAudio(const QStringList &paths, bool shuffle)
 {
     stopAudio();
 
-#ifdef Q_OS_MACOS
-    {
-        const QStringList extraPaths = { "/opt/homebrew/bin", "/usr/local/bin" };
-        const QStringList current = qEnvironmentVariable("PATH").split(":");
-        for (const QString &p : extraPaths) {
-            if (!current.contains(p))
-                qputenv("PATH", (p + ":" + qEnvironmentVariable("PATH")).toUtf8());
-        }
-    }
-#endif
+    if (paths.isEmpty())
+        return;
 
-    const QString bin = QStandardPaths::findExecutable("mpv");
+    const QString bin = mpvbin::locate();
+
     if (bin.isEmpty()) {
         qWarning("[AmbientMode] mpv not found in PATH — audio will not play");
         return;
     }
 
     QStringList args;
-    args << path
+    // Playlist entries first — absolute paths from scanFiles(), so they can't be
+    // mistaken for flags. An .m3u/.m3u8 counts as ONE entry here: mpv expands it
+    // lazily when playback reaches it, so shuffling picks whole playlists as units
+    // and the tracks inside one still play in their listed order.
+    args << paths
          << QStringLiteral("--no-video")
          << QStringLiteral("--loop-playlist=inf")
          << QStringLiteral("--no-terminal")
          << QStringLiteral("--really-quiet");
+    // mpv shuffles once, at load — with --loop-playlist=inf the same shuffled order
+    // replays on every wrap rather than being reshuffled each cycle.
+    if (shuffle)
+        args << QStringLiteral("--shuffle");
 
     m_audioProcess = new QProcess(this);
     m_audioProcess->start(bin, args);
-    qDebug("[AmbientMode] audio process started: %s", qPrintable(path));
+    qDebug("[AmbientMode] audio process started: %lld entr%s%s",
+           static_cast<long long>(paths.size()),
+           paths.size() == 1 ? "y" : "ies",
+           shuffle ? ", shuffled" : "");
 }
 
 void AmbientModeBackend::stopAudio()

@@ -268,15 +268,46 @@ FocusScope {
             var selected = itemsRoot.items[itemList.currentIndex]
             if (!selected)
                 return
-            navigateTo("Player.qml", { item: selected }, { currentIndex: itemList.currentIndex })
+            var playerParams = { item: selected }
+            if (itemsRoot.mode === "playlist") {
+                playerParams.playlistItems = itemsRoot.items
+                playerParams.playlistIndex = itemList.currentIndex
+            }
+            navigateTo("Player.qml", playerParams, { currentIndex: itemList.currentIndex })
+        }
+        Keys.onUpPressed: {
+            if (wlOverlayVisible) {
+                if(wlChoiceIndex === 0) wlChoiceIndex = 1
+                else wlChoiceIndex = 0
+                event.accepted = true
+                return
+            }
+            if (count === 0) return
+            if (currentIndex > 0) currentIndex--
+            else currentIndex = count - 1
+            itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
+        }
+        Keys.onDownPressed: {
+            if (wlOverlayVisible) {
+                if(wlChoiceIndex === 0) wlChoiceIndex = 1
+                else wlChoiceIndex = 0
+                event.accepted = true
+                return
+            }
+            if (count === 0) return
+            if (currentIndex < count - 1) currentIndex++
+            else currentIndex = 0
+            itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
         }
         Keys.onPressed: function(event) {
             if (wlOverlayVisible) {
                 if (event.key === Qt.Key_Up) {
-                    wlChoiceIndex = 0
+                    if(wlChoiceIndex === 0) wlChoiceIndex = 1
+                    else wlChoiceIndex = 0
                     event.accepted = true
                 } else if (event.key === Qt.Key_Down) {
-                    wlChoiceIndex = 1
+                    if(wlChoiceIndex === 0) wlChoiceIndex = 1
+                    else wlChoiceIndex = 0
                     event.accepted = true
                 } else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Backspace || event.key === Qt.Key_Back) {
                     wlOverlayVisible = false

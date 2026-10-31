@@ -14,12 +14,32 @@
 #include <QVariantMap>
 #include <QDebug>
 #include <QDateTime>
+#include <QRandomGenerator>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/bio.h>
 
 static const QString PLEX_TV = QStringLiteral("https://plex.tv");
+
+// Auth logging helpers.  plex.tv issues JWTs while PMS only accepts opaque
+// per-server tokens, so "which kind of token did we end up with" is the single
+// most useful thing to see in a bug report — and it can be logged safely.
+// tokenShape reports the kind and length only, midTail reduces a machine ID to
+// its last four characters, which is enough to correlate lines.  Neither ever
+// emits credential material; keep it that way if you add call sites.
+static QString tokenShape(const QString &t) {
+    if (t.isEmpty()) return QStringLiteral("<empty>");
+    return QStringLiteral("%1 len=%2")
+        .arg(t.startsWith(QLatin1String("eyJ")) ? QStringLiteral("JWT")
+                                                : QStringLiteral("opaque"),
+             QString::number(t.size()));
+}
+
+static QString midTail(const QString &mid) {
+    if (mid.isEmpty()) return QStringLiteral("<empty>");
+    return QStringLiteral("…") + mid.right(4);
+}
 
 static const QSet<QString> kSupportedLibraryTypes = {"movie", "show", "clip"};
 
@@ -496,21 +516,122 @@ QString PlexBackend::serverToken() const {
     return accountToken();
 }
 
+// The subset of a plex.tv Home user we persist and hand to QML. Single definition
+// so the link-time fetch and the live PIN-flag check cannot drift apart.
+QJsonObject PlexBackend::homeUserEntry(const QJsonObject &u) {
+    QJsonObject entry;
+    entry["id"]      = QString::number(u["id"].toInt());
+    entry["uuid"]    = u["uuid"].toString();
+    entry["title"]   = u["title"].toString(u["username"].toString()).toUpper();
+    entry["managed"] = u["managed"].toBool();
+    // "protected" means the profile has a PIN. Authoritative for prompting;
+    // see activateUser for why it is re-read live rather than trusted from cache.
+    entry["protected"] = u["protected"].toBool();
+    entry["admin"]     = u["admin"].toBool();
+    return entry;
+}
+
+QJsonObject PlexBackend::cachedUser(const QString &userId) const {
+    for (const auto &v : loadAuth()["users"].toArray()) {
+        if (v.toObject()["id"].toString() == userId) return v.toObject();
+    }
+    return {};
+}
+
 bool PlexBackend::isAccountOwner(const QString &userId) const {
     QString aid = loadAuth()["account_user_id"].toString();
     return !aid.isEmpty() && aid == userId;
 }
 
+// Reports whether a switch response is plex.tv refusing the switch for want of a
+// PIN.  Error code 1041 ("A valid PIN is required to perform this action") covers
+// both "the profile is PIN-protected and you sent none" and "that PIN was wrong".
+//
+// A 403 with no code we recognise is treated as a PIN refusal too, since that is
+// what a forbidden switch has meant in every report so far — but a bare 401 is
+// not: that is an invalid account token, and prompting for a PIN would send the
+// user down the wrong path entirely.
+static bool switchNeedsPin(int status, const QByteArray &body) {
+    if (status != 401 && status != 403) return false;
+
+    QJsonArray errors = QJsonDocument::fromJson(body).object()["errors"].toArray();
+    for (const auto &ev : errors)
+        if (ev.toObject()["code"].toInt() == 1041) return true;
+
+    return status == 403 && errors.isEmpty();
+}
+
 // Single consolidated user-switch path.  All three public callers (select_user,
 // reauth_select_user, applyCurrentUserSetting) delegate here and supply a callback
 // that handles the caller-specific signal and any post-switch state writes.
-void PlexBackend::activateUser(const QString &userId,
+//
+// pin is empty on the first attempt and only set when the caller is retrying after
+// userPinRequired.  It goes on the wire and is never written to disk.
+void PlexBackend::activateUser(const QString &userId, const QString &pin,
                                 std::function<void(const QVariantList &)> callback) {
-    QJsonObject auth = loadAuth();
-    QJsonObject user;
-    for (const auto &v : auth["users"].toArray()) {
-        if (v.toObject()["id"].toString() == userId) { user = v.toObject(); break; }
-    }
+    QJsonObject user = cachedUser(userId);
+    if (user.isEmpty()) { emit errorOccurred("USER NOT FOUND"); return; }
+
+    m_pendingPinUserId.clear();   // re-armed below if this attempt is refused
+
+    // Retrying with a PIN in hand: the gate has already been answered.
+    if (!pin.isEmpty()) { performUserSwitch(userId, pin, callback); return; }
+
+    // Honour the profile's own PIN gate before asking plex.tv to switch. plex.tv
+    // only *validates* a PIN when one is supplied — on many accounts it will
+    // happily switch into a "PIN Required" profile when none is sent — so this
+    // flag is what makes the parental control mean anything, and it is what every
+    // other Plex client prompts on. A supplied PIN is still checked server-side,
+    // so this is a gate, not a pretence.
+    //
+    // Read it live rather than from plex_auth.json: the cached copy is written at
+    // link time, so a PIN added in Plex afterwards would be silently ignored (and
+    // a PIN removed would prompt forever). A switch is an explicit, infrequent
+    // action that already costs two round trips, so one more is worth not having
+    // a security gate depend on stale state. If the request fails we fall back to
+    // the cached flag, and the 1041 refusal path still backstops us either way.
+    auto *usersReply = plexGet(QUrl(PLEX_TV + "/api/v2/home/users"), accountToken());
+    connect(usersReply, &QNetworkReply::finished, this,
+            [this, usersReply, userId, user, callback]() {
+        usersReply->deleteLater();
+
+        bool isProtected = user["protected"].toBool();
+        if (usersReply->error() == QNetworkReply::NoError) {
+            QJsonArray fresh;
+            for (const auto &v : QJsonDocument::fromJson(usersReply->readAll())
+                                     .object()["users"].toArray()) {
+                QJsonObject entry = homeUserEntry(v.toObject());
+                if (entry["id"].toString() == userId)
+                    isProtected = entry["protected"].toBool();
+                fresh.append(entry);
+            }
+            // Keep the cache honest while we have the answer — this is also how
+            // renamed, added and removed profiles get picked up.
+            if (!fresh.isEmpty()) {
+                QJsonObject a = loadAuth();
+                a["users"] = fresh;
+                saveAuth(a);
+            }
+        } else {
+            qWarning().noquote() << "[PlexAuth] live PIN-flag check failed ("
+                                 << usersReply->errorString()
+                                 << ") — falling back to cached flag";
+        }
+
+        if (isProtected) {
+            qWarning().noquote() << "[PlexAuth] profile is PIN-protected — prompting";
+            m_pendingPinUserId = userId;
+            emit userPinRequired(userId, false);
+            return;
+        }
+        performUserSwitch(userId, QString(), callback);
+    });
+}
+
+// The switch itself, split out so activateUser can gate on the PIN flag first.
+void PlexBackend::performUserSwitch(const QString &userId, const QString &pin,
+                                     std::function<void(const QVariantList &)> callback) {
+    QJsonObject user = cachedUser(userId);
     if (user.isEmpty()) { emit errorOccurred("USER NOT FOUND"); return; }
 
     QString switchKey = user["uuid"].toString();
@@ -518,16 +639,46 @@ void PlexBackend::activateUser(const QString &userId,
     QString masterToken = accountToken();
     bool owner = isAccountOwner(userId);
 
-    auto *switchReply = plexPost(
-        QUrl(PLEX_TV + "/api/v2/home/users/" + switchKey + "/switch"), masterToken);
+    QUrl switchUrl(PLEX_TV + "/api/v2/home/users/" + switchKey + "/switch");
+    if (!pin.isEmpty()) {
+        QUrlQuery pq;
+        pq.addQueryItem("pin", pin);
+        switchUrl.setQuery(pq);
+    }
+    bool hadPin = !pin.isEmpty();
+
+    auto *switchReply = plexPost(switchUrl, masterToken);
     connect(switchReply, &QNetworkReply::finished, this,
-            [this, switchReply, userId, masterToken, owner, callback]() mutable {
+            [this, switchReply, userId, masterToken, owner, hadPin, callback]() mutable {
         switchReply->deleteLater();
+        int switchStatus = switchReply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray switchBody = switchReply->readAll();
+
+        // A PIN-protected profile refuses the switch outright.  Stop here rather
+        // than falling through to the resource fetch: without a switch token the
+        // owner's per-server tokens stay JWTs, PMS rejects every one of them, and
+        // the failure only surfaces much later as an unexplained 401.
+        if (switchNeedsPin(switchStatus, switchBody)) {
+            qWarning().noquote() << "[PlexAuth] switch needs PIN — status=" << switchStatus
+                                 << "retry=" << hadPin;
+            // Park the user so a caller with no UI to prompt from (the
+            // current_user_id setting) can hand off to Root.qml on module entry.
+            // In-module callers prompt immediately and clear this on the retry.
+            m_pendingPinUserId = userId;
+            if (hadPin) emit errorOccurred("INCORRECT PIN");
+            emit userPinRequired(userId, hadPin);
+            return;
+        }
+
         QString switchToken = masterToken;
         if (switchReply->error() == QNetworkReply::NoError) {
-            QString t = QJsonDocument::fromJson(switchReply->readAll()).object()["authToken"].toString();
+            QString t = QJsonDocument::fromJson(switchBody).object()["authToken"].toString();
             if (!t.isEmpty()) switchToken = t;
         }
+        qWarning().noquote() << "[PlexAuth] switch status=" << switchStatus
+                             << "token=" << tokenShape(switchToken)
+                             << "differsFromMaster=" << (switchToken != masterToken);
 
         QUrl resUrl(PLEX_TV + "/api/v2/resources");
         QUrlQuery q;
@@ -563,6 +714,33 @@ void PlexBackend::activateUser(const QString &userId,
                             tokenMap[it.key()] = switchToken;
                     }
                 }
+            }
+
+            // Never persist a JWT as a server token.  plex.tv hands back the account
+            // JWT as the accessToken for owned servers, and PMS rejects those, so a
+            // JWT that survived the swap above is not a credential — storing it only
+            // buys an unexplained 401 later.  Shared servers (owned=false) come with
+            // real opaque tokens straight from /api/v2/resources and are unaffected.
+            int dropped = 0;
+            for (const QString &mid : tokenMap.keys()) {
+                if (tokenMap[mid].toString().startsWith(QLatin1String("eyJ"))) {
+                    tokenMap.remove(mid);
+                    dropped++;
+                }
+            }
+            qWarning().noquote() << "[PlexAuth] server tokens usable=" << tokenMap.size()
+                                 << "dropped(JWT)=" << dropped;
+
+            // Every token we were given is unusable — activating would leave the
+            // module authenticated but unable to reach any server.  Say so now.
+            // (An empty map with nothing dropped just means the resource fetch
+            // failed; that path still falls through and keeps the previous tokens.)
+            if (tokenMap.isEmpty() && dropped > 0) {
+                emit errorOccurred("PLEX DID NOT ISSUE A SERVER TOKEN FOR THIS DEVICE");
+                return;
+            }
+
+            if (owner) {
                 if (!tokenMap.isEmpty())
                     a["user_server_tokens"] = tokenMap;
                 a["managed_user_tokens"] = QJsonObject{}; // cleared on owner switch
@@ -625,7 +803,9 @@ QString PlexBackend::msToDisplay(int ms) {
 QVariantMap PlexBackend::formatItem(const QJsonObject &m) const {
     return QVariantMap{
         {"ratingKey",              m["ratingKey"].toString()},
+        {"guid",                   m["guid"].toString()},
         {"title",                  m["title"].toString().toUpper()},
+        {"titleSort",              m["titleSort"].toString().toUpper()},
         {"editionTitle",           m["editionTitle"].toString()},
         {"year",                   m["year"].toVariant()},
         {"duration",               m["duration"].toInt()},
@@ -637,6 +817,11 @@ QVariantMap PlexBackend::formatItem(const QJsonObject &m) const {
         {"grandparentTitle",       m["grandparentTitle"].toString()},
         {"parentTitle",            m["parentTitle"].toString()},
         {"parentRatingKey",        m["parentRatingKey"].toString()},
+        // The show's year on a season row, and the show's key on an episode row.
+        // Neither is derivable from the item itself: an episode's own "year" is
+        // its air year, not the show's, and Plex never sends a grandparentYear.
+        {"parentYear",             m["parentYear"].toVariant()},
+        {"grandparentRatingKey",   m["grandparentRatingKey"].toString()},
         {"index",                  m["index"].toInt()},
         {"parentIndex",            m["parentIndex"].toInt()},
         {"leafCount",              m["leafCount"].toInt()},
@@ -749,8 +934,12 @@ void PlexBackend::build_stream_url(const QString &ratingKey,
                                    const QString &sessionId) {
     QString uri = serverUrl();
     QString token = serverToken();
+    // Cloud-hosted extras have part keys that already carry a query string
+    // (e.g. /services/iva/assets/…/video.mp4?fmt=4&bitrate=750), so join with
+    // '&' in that case — a second '?' makes PMS reject the request with a 400.
     QString url = uri + partKey
-                + "?X-Plex-Client-Identifier="  + clientId()
+                + (partKey.contains('?') ? "&" : "?")
+                + "X-Plex-Client-Identifier="   + clientId()
                 + "&X-Plex-Session-Identifier=" + sessionId;
     qDebug() << "[Plex] Playback: DIRECT PLAY";
     emit streamUrlReady(url, token);
@@ -842,15 +1031,8 @@ void PlexBackend::fetchUsersAndServers(const QString &token) {
         QJsonObject usersData = QJsonDocument::fromJson(usersReply->readAll()).object();
         QJsonArray rawUsers = usersData["users"].toArray();
         QJsonArray users;
-        for (const auto &v : rawUsers) {
-            QJsonObject u = v.toObject();
-            QJsonObject entry;
-            entry["id"]      = QString::number(u["id"].toInt());
-            entry["uuid"]    = u["uuid"].toString();
-            entry["title"]   = u["title"].toString(u["username"].toString()).toUpper();
-            entry["managed"] = u["managed"].toBool();
-            users.append(entry);
-        }
+        for (const auto &v : rawUsers)
+            users.append(homeUserEntry(v.toObject()));
 
         // Step 2: fetch resources (servers)
         QUrl resUrl(PLEX_TV + "/api/v2/resources");
@@ -1054,8 +1236,8 @@ void PlexBackend::load_users_from_cache() {
 // select_user
 // ---------------------------------------------------------------------------
 
-void PlexBackend::select_user(const QString &userId) {
-    activateUser(userId, [this, userId](const QVariantList &accessibleServers) {
+void PlexBackend::select_user(const QString &userId, const QString &pin) {
+    activateUser(userId, pin, [this, userId](const QVariantList &accessibleServers) {
         QJsonObject cfg = loadConfig();
         QJsonObject mods = cfg["modules"].toObject();
         QJsonObject plexCfg = mods["com.240mp.plex"].toObject();
@@ -1079,6 +1261,10 @@ void PlexBackend::select_server(const QString &machineId) {
         if (s["machineId"].toString() == machineId) { server = s; break; }
     }
     if (server.isEmpty()) { emit errorOccurred("SERVER NOT FOUND"); return; }
+
+    // ratingKeys are server-local, so a cached year would be attributed to
+    // whatever unrelated show holds that key on the new server.
+    m_showYears.clear();
 
     auth["active_server_uri"]        = server["uri"].toString();
     auth["active_server_machine_id"] = machineId;
@@ -1164,6 +1350,12 @@ void PlexBackend::load_libraries_impl() {
     QString token = serverToken();
     if (uri.isEmpty()) { emit errorOccurred("NO SERVER CONFIGURED"); return; }
 
+    // The one line that says whether we are about to hand PMS something it can
+    // use.  "JWT" here means a 401 is coming; see tokenShape.
+    qWarning().noquote() << "[PlexAuth] load_libraries mid="
+                         << midTail(loadAuth()["active_server_machine_id"].toString())
+                         << "token=" << tokenShape(token);
+
     // Check continue watching
     QUrl cwUrl(uri + "/hubs/continueWatching");
     QUrlQuery cwq; cwq.addQueryItem("limit","1");
@@ -1187,15 +1379,49 @@ void PlexBackend::load_libraries_impl() {
                     handle498([this]{ load_libraries_impl(); });
                 } else if (secStatus == 401) {
                     // 401 from PMS means this server rejected our token — the plex.tv account
-                    // auth is NOT invalidated. Do not delete plex_auth.json. The server may be
-                    // running an older version that doesn't accept JWTs yet; the user should
-                    // try selecting a different server or update their Plex Media Server.
-                    emit errorOccurred("SERVER AUTHENTICATION FAILED. TRY SELECTING A DIFFERENT SERVER OR UPDATE YOUR PLEX MEDIA SERVER.");
+                    // auth is NOT invalidated. Do not delete plex_auth.json.
+                    //
+                    // The usual cause is a stale per-server token: the map is first written at
+                    // link time straight from /api/v2/resources, where servers the user owns
+                    // come back with a plex.tv JWT that PMS does not accept. activateUser swaps
+                    // those for a PMS-usable token during user selection, but that swap is
+                    // skipped silently if either of its two requests fails (a brief network
+                    // blip during first-run setup is enough), leaving the JWT in place forever.
+                    //
+                    // So before surfacing an error, re-run activateUser for the active user to
+                    // refetch and rewrite the token map, then retry once. m_serverAuthRetried
+                    // keeps that to a single attempt.
+                    // activateUser emits its own "USER NOT FOUND" if the id isn't in the
+                    // cached users array, which would be a confusing thing to show here —
+                    // so only take the retry path when we know it will resolve.
+                    QJsonObject a = loadAuth();
+                    QString uid = a["active_user_id"].toString();
+                    bool known = false;
+                    for (const auto &v : a["users"].toArray())
+                        if (v.toObject()["id"].toString() == uid) { known = true; break; }
+                    if (!m_serverAuthRetried && !uid.isEmpty() && known) {
+                        m_serverAuthRetried = true;
+                        qWarning("[PlexBackend] PMS rejected our token — refreshing server tokens and retrying");
+                        // No PIN here: if the profile needs one, activateUser emits
+                        // userPinRequired and the view prompts.
+                        activateUser(uid, QString(),
+                                     [this](const QVariantList &) { load_libraries_impl(); });
+                    } else {
+                        m_serverAuthRetried = false;
+                        // A JWT-shaped token means plex.tv never issued a server
+                        // credential for us — naming that is more use than "try again".
+                        emit errorOccurred(
+                            serverToken().startsWith(QLatin1String("eyJ"))
+                                ? "PLEX DID NOT ISSUE A SERVER TOKEN FOR THIS DEVICE. "
+                                  "SIGN OUT AND SIGN IN AGAIN."
+                                : "SERVER REJECTED THIS DEVICE. PLEASE TRY AGAIN.");
+                    }
                 } else {
                     emit errorOccurred("LOAD LIBRARIES FAILED: " + secReply->errorString());
                 }
                 return;
             }
+            m_serverAuthRetried = false; // this server accepted our token; re-arm the retry
             QJsonArray sections = QJsonDocument::fromJson(secReply->readAll())
                                   .object()["MediaContainer"].toObject()["Directory"].toArray();
 
@@ -1510,6 +1736,56 @@ void PlexBackend::load_category_items(const QString &sectionId, const QString &f
     }
 }
 
+// Folder browsing — Plex's "by folder" library view, which walks the library's
+// on-disk directory tree instead of its metadata. A section's top level is
+// /library/sections/{id}/folder; every level below it is reached by following the
+// key the server put on the folder row (…/folder?parent=<n>), passed back here
+// verbatim rather than rebuilt, so the parent ids stay the server's business.
+//
+// The response mixes two shapes: folder rows arrive under Directory on some PMS
+// versions and under Metadata (type "folder") on others, while leaf media always
+// arrives under Metadata. Both arrays are read, and a Metadata entry only counts
+// as media when it carries a ratingKey.
+void PlexBackend::load_folder(const QString &sectionId, const QString &folderKey) {
+    QString uri = serverUrl(), token = serverToken();
+    QUrl url(uri + (folderKey.isEmpty() ? "/library/sections/" + sectionId + "/folder"
+                                        : folderKey));
+    auto *reply = plexGet(url, token);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, sectionId, folderKey]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
+                handle498([this, sectionId, folderKey]{ load_folder(sectionId, folderKey); }); return;
+            }
+            emit errorOccurred("LOAD FOLDERS FAILED: " + reply->errorString()); return;
+        }
+        QJsonObject mc = QJsonDocument::fromJson(reply->readAll())
+                         .object()["MediaContainer"].toObject();
+        QVariantList items;
+        // A folder row with no key is not openable, so it is dropped rather than
+        // listed as a dead end.
+        auto appendFolder = [&items, &sectionId](const QJsonObject &d) {
+            QString key = d["key"].toString();
+            if (key.isEmpty()) return;
+            items.append(QVariantMap{
+                {"title",     d["title"].toString().toUpper()},
+                {"type",      "folder"},
+                {"folderKey", key},
+                {"sectionId", sectionId},
+            });
+        };
+        for (const auto &dv : mc["Directory"].toArray()) appendFolder(dv.toObject());
+        for (const auto &mv : mc["Metadata"].toArray()) {
+            QJsonObject m = mv.toObject();
+            if (m["ratingKey"].toString().isEmpty() || m["type"].toString() == "folder")
+                appendFolder(m);
+            else
+                items.append(formatItem(m));
+        }
+        emit folderLoaded(items);
+    });
+}
+
 void PlexBackend::check_section_capabilities(const QString &sectionId) {
     QString uri = serverUrl(), token = serverToken();
 
@@ -1648,6 +1924,7 @@ QVariantMap PlexBackend::buildItemDetail(const QJsonObject &meta) const {
 
     return QVariantMap{
         {"ratingKey",        meta["ratingKey"].toString()},
+        {"guid",             meta["guid"].toString()},
         {"title",            meta["title"].toString().toUpper()},
         {"editionTitle",     meta["editionTitle"].toString()},
         {"year",             meta["year"].toVariant()},
@@ -1668,7 +1945,38 @@ QVariantMap PlexBackend::buildItemDetail(const QJsonObject &meta) const {
         {"parentRatingKey",  meta["parentRatingKey"].toString()},
         {"grandparentTitle", meta["grandparentTitle"].toString()},
         {"parentTitle",      meta["parentTitle"].toString()},
+        {"parentYear",       meta["parentYear"].toVariant()},
+        {"grandparentRatingKey", meta["grandparentRatingKey"].toString()},
     };
+}
+
+void PlexBackend::load_show_year(const QString &showRatingKey) {
+    if (showRatingKey.isEmpty()) return;
+    const auto cached = m_showYears.constFind(showRatingKey);
+    if (cached != m_showYears.constEnd()) {
+        emit showYearReady(showRatingKey, *cached);
+        return;
+    }
+
+    QString uri = serverUrl(), token = serverToken();
+    auto *reply = plexGet(QUrl(uri + "/library/metadata/" + showRatingKey), token);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, showRatingKey]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
+                handle498([this, showRatingKey]{ load_show_year(showRatingKey); }); return;
+            }
+            // Only a card's filename depends on this, so a failure is silent —
+            // the caller falls back to a name without the year.
+            return;
+        }
+        QJsonArray metaArr = QJsonDocument::fromJson(reply->readAll())
+                             .object()["MediaContainer"].toObject()["Metadata"].toArray();
+        if (metaArr.isEmpty()) return;
+        const int year = metaArr[0].toObject()["year"].toInt();
+        m_showYears.insert(showRatingKey, year);
+        emit showYearReady(showRatingKey, year);
+    });
 }
 
 void PlexBackend::load_item_detail(const QString &ratingKey) {
@@ -1705,6 +2013,47 @@ void PlexBackend::load_children(const QString &ratingKey) {
         QVariantList items;
         for (const auto &mv : metadata) items.append(formatItem(mv.toObject()));
         emit childrenLoaded(items);
+    });
+}
+
+void PlexBackend::load_extras(const QString &ratingKey) {
+    QString uri = serverUrl(), token = serverToken();
+    auto *reply = plexGet(QUrl(uri + "/library/metadata/" + ratingKey + "/extras"), token);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, ratingKey]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
+                handle498([this, ratingKey]{ load_extras(ratingKey); }); return;
+            }
+            // No errorOccurred here: the detail views' error handlers reset
+            // loading/play state, and a failed extras fetch must not do that.
+            qDebug() << "[Plex] Load extras failed:" << reply->errorString();
+            emit extrasLoaded(QVariantList{}); return;
+        }
+        QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
+                              .object()["MediaContainer"].toObject()["Metadata"].toArray();
+        QVariantList items;
+        for (const auto &mv : metadata) {
+            QJsonObject meta = mv.toObject();
+            QVariantMap detail = buildItemDetail(meta);
+            if (detail.isEmpty()) continue; // metadata-only extra, nothing playable
+
+            // "behindTheScenes" → "BEHIND THE SCENES". Plex's own UI shortens
+            // the raw "sceneOrSample" subtype to just "Scene"; match that.
+            QString subtype = meta["subtype"].toString();
+            QString label;
+            if (subtype == "sceneOrSample") {
+                label = QStringLiteral("SCENE");
+            } else {
+                for (const QChar &c : subtype) {
+                    if (c.isUpper() && !label.isEmpty()) label += ' ';
+                    label += c.toUpper();
+                }
+            }
+            detail["extraTypeLabel"] = label.isEmpty() ? QStringLiteral("EXTRA") : label;
+            items.append(detail);
+        }
+        emit extrasLoaded(items);
     });
 }
 
@@ -1807,6 +2156,367 @@ void PlexBackend::load_next_episode(const QString &currentRatingKey) {
                 if (arr.isEmpty()) { emit nextEpisodeReady(QVariantMap{}); return; }
                 emit nextEpisodeReady(buildItemDetail(arr[0].toObject()));
             });
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// NFC card resolution
+//
+// An NFC card stores a Plex guid verbatim (e.g. "plex://show/5f57bdaf…"), never
+// a ratingKey: guids survive library re-scans and moves between servers, which a
+// physical card on a shelf needs and a ratingKey cannot promise.
+//
+// Resolution starts with an unscoped /library/all?guid= query. Unscoped matters
+// twice over: it searches every section, so the card says *what* to play and we
+// decide *where* it lives, and it needs no "type" hint (a section-scoped query
+// would require type=4 to match episodes).
+//
+// That query identifies the item but never returns a playable one: /library/all
+// omits Media/Part unless a type= filter is supplied, and the type is exactly
+// what we are asking it for. So the chosen item is always re-fetched by
+// ratingKey, which does carry Media.
+//
+// Verified against PMS 2026-08-20 at movie/show/season/episode level. External
+// ids (imdb://, tmdb://, tvdb://) do NOT resolve through this filter even though
+// they appear in the item's Guid[] array — only plex:// guids work.
+// ---------------------------------------------------------------------------
+
+// Fetches an item's children as formatItem maps. Errors yield an empty list —
+// every caller here treats "no children" and "couldn't fetch children" the same.
+void PlexBackend::fetchChildren(const QString &ratingKey,
+                                std::function<void(const QVariantList &)> callback) {
+    auto *reply = plexGet(QUrl(serverUrl() + "/library/metadata/" + ratingKey + "/children"),
+                          serverToken());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback]() {
+        reply->deleteLater();
+        QVariantList out;
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonArray meta = QJsonDocument::fromJson(reply->readAll())
+                              .object()["MediaContainer"].toObject()["Metadata"].toArray();
+            for (const auto &mv : meta) out.append(formatItem(mv.toObject()));
+        }
+        callback(out);
+    });
+}
+
+// Every episode under a show or season, in season/episode order. flattenSeasons
+// is a no-op when the children are already episodes, so one path serves both.
+void PlexBackend::fetchEpisodePool(const QString &scopeRatingKey,
+                                   std::function<void(const QVariantList &)> callback) {
+    fetchChildren(scopeRatingKey, [this, callback](const QVariantList &children) {
+        if (children.isEmpty()) { callback({}); return; }
+        flattenSeasons(children, callback);
+    });
+}
+
+// Picks the episode an on-deck (default) show/season card should play.
+//
+// Derived from the pool rather than /library/metadata/{key}/onDeck, for two
+// reasons: that endpoint 404s outright when a show has nothing on deck (fully
+// unwatched or fully watched), and load_on_deck_for only reports episodes with
+// viewOffset > 0, so it answers "what's part-watched", not "what's next". The
+// pool is already in season/episode order, so first-in-progress →
+// first-unwatched → first is exactly on-deck.
+QVariantMap PlexBackend::pickOnDeckEpisode(const QVariantList &pool) {
+    if (pool.isEmpty()) return {};
+    for (const auto &v : pool) {
+        if (v.toMap()["viewOffset"].toInt() > 0) return v.toMap();
+    }
+    for (const auto &v : pool) {
+        if (v.toMap()["viewCount"].toInt() == 0) return v.toMap();
+    }
+    return pool.first().toMap();
+}
+
+// Draws the next episode for a shuffle card.
+//
+// A bag — a shuffled permutation played to exhaustion, then reshuffled — rather
+// than an independent random draw each time. Independent draws repeat and clump
+// badly over the hours a jukebox card runs, and because shuffle playback reports
+// no timeline there is no watched state to fall back on for variety. The bag is
+// rebuilt when the card's scope changes or the permutation runs out, which also
+// bounds how stale it can get if the library changes mid-session.
+QString PlexBackend::takeFromShuffleBag(const QString &scopeRatingKey,
+                                        const QVariantList &pool) {
+    if (pool.isEmpty()) return {};
+
+    if (m_shuffleScope != scopeRatingKey || m_shuffleBag.isEmpty()) {
+        m_shuffleScope = scopeRatingKey;
+        m_shuffleBag.clear();
+        for (const auto &v : pool) {
+            const QString key = v.toMap()["ratingKey"].toString();
+            if (!key.isEmpty()) m_shuffleBag.append(key);
+        }
+        // Fisher-Yates.
+        for (qsizetype i = m_shuffleBag.size() - 1; i > 0; --i)
+            m_shuffleBag.swapItemsAt(i, QRandomGenerator::global()->bounded(int(i) + 1));
+
+        // Don't let a reshuffle replay the episode that just finished.
+        if (m_shuffleBag.size() > 1 && m_shuffleBag.constLast() == m_lastShuffledKey)
+            m_shuffleBag.swapItemsAt(m_shuffleBag.size() - 1, 0);
+
+        qDebug("[Plex] Shuffle bag rebuilt for scope %s — %lld episodes",
+               qPrintable(scopeRatingKey), qlonglong(m_shuffleBag.size()));
+    }
+
+    // Drawn from the back so the swap above targets the next one out.
+    m_lastShuffledKey = m_shuffleBag.takeLast();
+    return m_lastShuffledKey;
+}
+
+// Loads a chosen episode's full detail and emits it as the card's result.
+void PlexBackend::emitCardDetail(const QString &ratingKey, bool trackProgress,
+                                 const QString &scopeRatingKey) {
+    auto *reply = plexGet(QUrl(serverUrl() + "/library/metadata/" + ratingKey), serverToken());
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, trackProgress, scopeRatingKey]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit cardError(QStringLiteral("COULD NOT LOAD ITEM")); return;
+        }
+        QJsonArray arr = QJsonDocument::fromJson(reply->readAll())
+                         .object()["MediaContainer"].toObject()["Metadata"].toArray();
+        if (arr.isEmpty()) { emit cardError(QStringLiteral("COULD NOT LOAD ITEM")); return; }
+        QVariantMap detail = buildItemDetail(arr[0].toObject());
+        if (detail.isEmpty()) {
+            emit cardError(QStringLiteral("THIS ITEM HAS NO PLAYABLE MEDIA")); return;
+        }
+        detail["trackProgress"] = trackProgress;
+        // Non-empty only for a shuffle card: it tells the Player which show or
+        // season to draw the next episode from when this one ends.
+        detail["cardScope"] = scopeRatingKey;
+        emit cardItemReady(detail);
+    });
+}
+
+// Same fetch, reported through the signal the Player's autoplay already handles.
+// An empty map means "nothing to advance to", which the Player treats as the end.
+void PlexBackend::emitNextEpisode(const QString &ratingKey) {
+    if (ratingKey.isEmpty()) { emit nextEpisodeReady(QVariantMap{}); return; }
+    auto *reply = plexGet(QUrl(serverUrl() + "/library/metadata/" + ratingKey), serverToken());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit nextEpisodeReady(QVariantMap{}); return;
+        }
+        QJsonArray arr = QJsonDocument::fromJson(reply->readAll())
+                         .object()["MediaContainer"].toObject()["Metadata"].toArray();
+        if (arr.isEmpty()) { emit nextEpisodeReady(QVariantMap{}); return; }
+        emit nextEpisodeReady(buildItemDetail(arr[0].toObject()));
+    });
+}
+
+void PlexBackend::load_random_episode(const QString &scopeRatingKey) {
+    if (scopeRatingKey.isEmpty()) { emit nextEpisodeReady(QVariantMap{}); return; }
+    fetchEpisodePool(scopeRatingKey, [this, scopeRatingKey](const QVariantList &pool) {
+        emitNextEpisode(takeFromShuffleBag(scopeRatingKey, pool));
+    });
+}
+
+// A guard, not a policy: a queue is just a list of ratingKeys, but a very large
+// collection of shows would otherwise fan out into thousands of entries — and
+// every one of them was a request. Nothing real comes close.
+static constexpr int kMaxQueueItems = 2000;
+
+// Expands a PLAY ALL / SHUFFLE selection into what actually plays.
+//
+// Shows are the only rows that need expanding: seasons were already flattened
+// when the list was loaded, so everything else is a leaf. flattenSeasons itself
+// can't do this job — it builds the *displayed* list, and expanding shows there
+// would make a collection of shows browse as a wall of episodes.
+//
+// The shows fan out in parallel into ordered slots, so a collection's episodes
+// stay grouped by show, in season/episode order, however the replies land. A
+// show whose fetch fails contributes nothing and never stalls the queue:
+// fetchChildren reports an empty list on error rather than not reporting.
+void PlexBackend::expand_queue(const QVariantList &items) {
+    int showCount = 0;
+    for (const auto &v : items) {
+        if (v.toMap()["type"].toString() == QLatin1String("show")) showCount++;
+    }
+
+    // No shows: the selection is already the queue, so answer without a round trip.
+    if (showCount == 0) {
+        QStringList keys;
+        for (const auto &v : items) {
+            const QString key = v.toMap()["ratingKey"].toString();
+            if (!key.isEmpty()) keys.append(key);
+        }
+        emit queueReady(keys);
+        return;
+    }
+
+    auto *keySlots =  new QList<QStringList>(items.size());
+    auto *pending = new int(showCount);
+
+    for (int i = 0; i < items.size(); i++) {
+        const QVariantMap item = items[i].toMap();
+        const QString key = item["ratingKey"].toString();
+        if (item["type"].toString() != QLatin1String("show")) {
+            if (!key.isEmpty()) (*keySlots)[i] = QStringList{key};
+            continue;
+        }
+        const int idx = i;
+        fetchEpisodePool(key, [this, keySlots, pending, idx](const QVariantList &pool) {
+            QStringList episodes;
+            for (const auto &v : pool) {
+                const QString epKey = v.toMap()["ratingKey"].toString();
+                if (!epKey.isEmpty()) episodes.append(epKey);
+            }
+            (*keySlots)[idx] = episodes;
+            if (--(*pending) == 0) {
+                QStringList result;
+                for (const auto &bucket : *keySlots) result.append(bucket);
+                if (result.size() > kMaxQueueItems) {
+                    qWarning("[Plex] queue truncated from %lld to %d items",
+                             qlonglong(result.size()), kMaxQueueItems);
+                    result = result.mid(0, kMaxQueueItems);
+                }
+                emit queueReady(result);
+                delete keySlots;
+                delete pending;
+            }
+        });
+    }
+}
+
+// A queue's order is decided in QML from rows that are already loaded, so this
+// only has to resolve one ratingKey — which emitNextEpisode already does, through
+// the signal the Player's advance path consumes. An empty key (queue exhausted)
+// reports an empty map, which the Player treats as the end.
+void PlexBackend::load_queue_item(const QString &ratingKey) {
+    emitNextEpisode(ratingKey);
+}
+
+void PlexBackend::resolve_card(const QString &guid, const QString &mode) {
+    if (guid.isEmpty()) { emit cardError(QStringLiteral("THIS CARD HAS NO PLEX ITEM")); return; }
+    const QString uri = serverUrl(), token = serverToken();
+    if (uri.isEmpty() || token.isEmpty()) {
+        emit cardError(QStringLiteral("NOT SIGNED IN TO PLEX")); return;
+    }
+
+    // A shuffle card is a jukebox: it must not disturb the show's real progress,
+    // so its playback reports no timeline at all (see Player.qml trackProgress).
+    const bool trackProgress = (mode != QLatin1String("shuffle"));
+
+    QUrl url(uri + "/library/all");
+    QUrlQuery q;
+    q.addQueryItem("guid", guid);
+    url.setQuery(q);
+
+    auto *reply = plexGet(url, token);
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, guid, mode, trackProgress]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
+                handle498([this, guid, mode]{ resolve_card(guid, mode); }); return;
+            }
+            emit cardError(QStringLiteral("PLEX SERVER UNREACHABLE")); return;
+        }
+        QJsonArray arr = QJsonDocument::fromJson(reply->readAll())
+                         .object()["MediaContainer"].toObject()["Metadata"].toArray();
+        if (arr.isEmpty()) {
+            // Also the "this user can't see it" case: Plex filters by the token's
+            // access rather than returning 403, so a permission miss looks the same.
+            emit cardError(QStringLiteral("NOT FOUND ON THIS SERVER")); return;
+        }
+
+        const QJsonObject meta = arr[0].toObject();
+        const QString type = meta["type"].toString();
+        const QString ratingKey = meta["ratingKey"].toString();
+        qDebug() << "[Plex] Card resolved —" << type << meta["title"].toString()
+                 << "| mode:" << (mode.isEmpty() ? QStringLiteral("(default)") : mode);
+
+        // The guid query identifies the item but cannot play it: /library/all omits
+        // Media/Part unless given a type= filter, and the type isn't known until
+        // this response arrives. So every path re-fetches the chosen item by
+        // ratingKey, which always carries Media. Shows and seasons additionally
+        // have to be resolved down to an episode first — buildItemDetail on one of
+        // them returns an empty map that would read as a generic failure.
+        if (type == QLatin1String("movie") || type == QLatin1String("episode")
+            || type == QLatin1String("clip")) {
+            // No scope: a single item has nothing to shuffle within.
+            emitCardDetail(ratingKey, trackProgress, QString());
+            return;
+        }
+
+        if (type != QLatin1String("season") && type != QLatin1String("show")) {
+            emit cardError(QStringLiteral("UNSUPPORTED ITEM TYPE"));
+            return;
+        }
+
+        const bool shuffle = (mode == QLatin1String("shuffle"));
+        fetchEpisodePool(ratingKey, [this, ratingKey, shuffle, trackProgress](const QVariantList &pool) {
+            if (pool.isEmpty()) { emit cardError(QStringLiteral("NO EPISODES FOUND")); return; }
+            if (shuffle) {
+                // The first episode is drawn from the same bag the autoplay
+                // advance draws from, so a card's whole run is one permutation
+                // rather than a random first pick followed by a separate cycle.
+                // The scope travels with the detail so the Player can ask for the
+                // next draw when this episode ends.
+                emitCardDetail(takeFromShuffleBag(ratingKey, pool), trackProgress, ratingKey);
+                return;
+            }
+            const QVariantMap pick = pickOnDeckEpisode(pool);
+            if (pick.isEmpty()) { emit cardError(QStringLiteral("NO EPISODES FOUND")); return; }
+            emitCardDetail(pick["ratingKey"].toString(), trackProgress, QString());
+        });
+    });
+}
+
+// An NFC card can also name a whole set. Its ref carries the ratingKey rather
+// than a guid: collections and playlists are server-local, user-created objects
+// with no metadata-agent guid to be portable with, so a server-local id costs
+// nothing and buys a one-request resolve.
+//
+// The rows come back in the same shape the list view hands to expand_queue —
+// formatItem plus flattenSeasons, exactly as load_collection_items and
+// load_playlist_items build them — so the card path and the in-app PLAY ALL /
+// SHUFFLE rows expand and order a set identically.
+void PlexBackend::resolve_card_queue(const QString &ref) {
+    static const QString kCollectionPrefix = QStringLiteral("plex://collection/");
+    static const QString kPlaylistPrefix   = QStringLiteral("plex://playlist/");
+
+    QString path;
+    if (ref.startsWith(kCollectionPrefix))
+        path = "/library/collections/" + ref.mid(kCollectionPrefix.size()) + "/items";
+    else if (ref.startsWith(kPlaylistPrefix))
+        path = "/playlists/" + ref.mid(kPlaylistPrefix.size()) + "/items";
+    else { emit cardError(QStringLiteral("UNSUPPORTED ITEM TYPE")); return; }
+
+    const QString uri = serverUrl(), token = serverToken();
+    if (uri.isEmpty() || token.isEmpty()) {
+        emit cardError(QStringLiteral("NOT SIGNED IN TO PLEX")); return;
+    }
+
+    auto *reply = plexGet(QUrl(uri + path), token);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, ref]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 498) {
+                handle498([this, ref]{ resolve_card_queue(ref); }); return;
+            }
+            // A deleted collection or playlist 404s here rather than answering
+            // empty, so it has to read as the same "gone" message.
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 404) {
+                emit cardError(QStringLiteral("NOT FOUND ON THIS SERVER")); return;
+            }
+            emit cardError(QStringLiteral("PLEX SERVER UNREACHABLE")); return;
+        }
+        QJsonArray metadata = QJsonDocument::fromJson(reply->readAll())
+                              .object()["MediaContainer"].toObject()["Metadata"].toArray();
+        if (metadata.isEmpty()) {
+            // Also the "this user can't see it" case: Plex filters by the token's
+            // access rather than returning 403, so a permission miss looks the same.
+            emit cardError(QStringLiteral("NOT FOUND ON THIS SERVER")); return;
+        }
+        QVariantList items;
+        for (const auto &mv : metadata) items.append(formatItem(mv.toObject()));
+        flattenSeasons(items, [this](const QVariantList &flat) {
+            qDebug() << "[Plex] Card resolved — set of" << flat.size() << "rows";
+            emit cardQueueReady(flat);
         });
     });
 }
@@ -2238,7 +2948,10 @@ void PlexBackend::applyCurrentUserSetting() {
                      ["com.240mp.plex"].toObject()["current_user_id"].toString();
     if (userId.isEmpty()) return;
 
-    activateUser(userId, [this](const QVariantList &accessibleServers) {
+    // This runs from the app Settings screen, where the Plex views are not loaded
+    // and so cannot prompt.  activateUser parks the user in m_pendingPinUserId and
+    // Root.qml drains it on the next module entry, ahead of the auto_sign_in branch.
+    activateUser(userId, QString(), [this](const QVariantList &accessibleServers) {
         QJsonObject a = loadAuth();
         QString curMid = a["active_server_machine_id"].toString();
         bool curAccessible = false;
@@ -2288,8 +3001,26 @@ void PlexBackend::applyCurrentServerSetting() {
 // reauth_select_user
 // ---------------------------------------------------------------------------
 
-void PlexBackend::reauth_select_user(const QString &userId) {
-    activateUser(userId, [this, userId](const QVariantList &accessibleServers) {
+// Backing out of a PIN prompt.  The current_user_id setting may already name the
+// user we failed to switch to, so put it back to whoever is actually active —
+// otherwise config claims a user the app never activated.
+void PlexBackend::cancel_pending_pin() {
+    m_pendingPinUserId.clear();
+
+    QString activeId = loadAuth()["active_user_id"].toString();
+    QJsonObject cfg = loadConfig();
+    QJsonObject mods = cfg["modules"].toObject();
+    QJsonObject plexCfg = mods["com.240mp.plex"].toObject();
+    if (plexCfg["current_user_id"].toString() == activeId) return;
+
+    plexCfg["current_user_id"] = activeId;
+    mods["com.240mp.plex"] = plexCfg;
+    cfg["modules"] = mods;
+    saveConfig(cfg);
+}
+
+void PlexBackend::reauth_select_user(const QString &userId, const QString &pin) {
+    activateUser(userId, pin, [this, userId](const QVariantList &accessibleServers) {
         QJsonObject a = loadAuth();
         QJsonObject cfg = loadConfig();
         QJsonObject mods = cfg["modules"].toObject();

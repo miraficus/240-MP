@@ -7,21 +7,7 @@
 #include <QStringList>
 
 class AppCore;
-
-#ifdef Q_OS_LINUX
-#include <xf86drm.h>
-#include <xf86drmMode.h>
-
-struct DrmSavedState {
-    uint32_t crtcId      = 0;
-    uint32_t connectorId = 0;
-    uint32_t fbId        = 0;
-    int      x           = 0;
-    int      y           = 0;
-    drmModeModeInfo mode = {};
-    bool     valid       = false;
-};
-#endif
+class DisplayHandoff;
 
 class MpvController : public QObject {
     Q_OBJECT
@@ -30,7 +16,9 @@ class MpvController : public QObject {
     Q_PROPERTY(int playlistPos READ playlistPos NOTIFY playlistPosChanged)
 
 public:
-    explicit MpvController(const QString &appRoot, AppCore *appCore = nullptr,
+    explicit MpvController(const QString &appRoot, const QString &dataRoot,
+                           AppCore *appCore = nullptr,
+                           DisplayHandoff *handoff = nullptr,
                            QObject *parent = nullptr);
     ~MpvController() override;
 
@@ -53,7 +41,8 @@ public:
                                   float imageDurationSec = 0.0f,
                                   bool imageContent = false,
                                   const QStringList &extraArgs = {},
-                                  const QString &jellyfinToken = {});
+                                  const QString &jellyfinToken = {},
+                                  const QStringList &extraUrls = {});
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seekTo(int positionMs);
     Q_INVOKABLE void sendKey(const QString &key);
@@ -64,6 +53,13 @@ public:
     // Pi 3 DRM-overlay path). Settings uses this to show the "Smooth Playback"
     // toggle only where the smoothness-vs-crop trade-off actually exists.
     Q_INVOKABLE bool hasSmoothPlaybackTradeoff() const;
+
+    // Which display fullscreen playback should open on, matching the UI's
+    // app-level "display_index" (index into QGuiApplication::screens(), plus
+    // that screen's QScreen::name()). main.cpp calls this once at startup;
+    // index 0 (the default) adds no mpv args at all. Desktop launches only —
+    // the headless VT-handoff path is unaffected.
+    void setTargetDisplay(int index, const QString &screenName);
 
 signals:
     void positionChanged(int ms);
@@ -82,6 +78,14 @@ signals:
     void playbackEnded(int finalPositionMs, int finalDurationMs, const QString &reason);
 
     void skipRequested();
+    // The OSC's SUBTITLE button when the sub is burned into the stream and mpv
+    // has nothing to cycle (see `sub-cycle` in scripts/mpv-osc.lua). The module
+    // owns the change — typically stop, re-request the stream, relaunch.
+    void subtitleCycleRequested();
+    // The OSC's AUDIO button when the track is baked into the stream and mpv has
+    // nothing to cycle (see `audio-cycle` in scripts/mpv-osc.lua). As above, the
+    // module owns the change.
+    void audioCycleRequested();
 
 private slots:
     void onProcessFinished();
@@ -93,8 +97,6 @@ private:
     enum class VideoProfile { Pi3, Pi4, PiFullKms, Generic };
 
     void sendCommand(const QJsonArray &args);
-    void doHeadlessRestore(int pos, int dur, const QString &reason);
-    bool detectHeadlessMode() const;
     VideoProfile detectVideoProfile() const;
     // Appends the profile-specific --vo/--gpu-context/--hwdec flags (honouring the
     // app-level "mpv_video_args" override) to a forming mpv argument list.
@@ -105,16 +107,19 @@ private:
     // App-level "auto_crop" setting (default OFF). When ON, playback starts with
     // panscan=1 so video fills a CRT/4:3 screen by default (still toggleable live).
     bool autoCropEnabled() const;
-    int  getActiveVt() const;
-    int  findFreeVt() const;
-    int  findQtDrmFd() const;
-    void switchToVt(int vt);
-#ifdef Q_OS_LINUX
-    void saveDrmCrtcState(int fd);
-    void restoreDrmCrtcState(int fd);
-#endif
+    // True when the active decode path can't crop (Pi 3 overlay path with smooth
+    // playback ON): --panscan blanks the video there. Gates auto-crop and tells
+    // the OSC scripts to hide their CROP button.
+    bool cropUnavailable() const;
+    // App-level "video_output_levels" setting (default "Auto"). Returns the mpv
+    // value for --video-output-levels ("limited"/"full"), or empty on Auto/unset.
+    QString videoOutputLevels() const;
 
-    AppCore      *m_appCore        = nullptr;
+    // Owner token handed to DisplayHandoff, so the app can tell who has the screen.
+    static constexpr const char *kHandoffOwner = "mpv";
+
+    AppCore        *m_appCore      = nullptr;
+    DisplayHandoff *m_handoff      = nullptr;
     VideoProfile  m_videoProfile  = VideoProfile::Generic;
     QProcess     *m_process        = nullptr;
     QLocalSocket *m_ipc            = nullptr;
@@ -123,21 +128,23 @@ private:
     qint64        m_lastIpcEventMs = 0;
     bool          m_paused         = false;  // mirrors mpv's pause property (watchdog exemption)
     QString       m_appRoot;
+    QString       m_dataRoot;
     QString       m_socketPath;
     QString       m_inputConfPath;
     QString       m_logFilePath;
     QString       m_subInfoPath;       // JSON map: external sub URL -> friendly name (for the OSC)
     QString       m_lastEndFileReason;  // mpv end-file "reason" for the current session
+    // Set when this session passed --start; cleared once mpv has applied it. See
+    // onIpcReadyRead's playback-restart handling for why the option can't just stay set.
+    bool          m_pendingStartClear = false;
     int           m_position     = 0;
     int           m_duration     = 0;
     int           m_playlistPos  = -1;
     bool          m_headlessMode = false;
+    int           m_displayIndex = 0;   // see setTargetDisplay()
+    QString       m_displayScreenName;
     int           m_previousVt   = -1;
     bool          m_hasMpvOscScript     = false;
     bool          m_hasAmbientOscScript = false;
     bool          m_hasMediaKeysScript  = false;
-    int           m_qtDrmFd      = -1;
-#ifdef Q_OS_LINUX
-    DrmSavedState m_savedDrm     = {};
-#endif
 };

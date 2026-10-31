@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QHash>
 #include <functional>
 #include <openssl/evp.h>
 
@@ -26,8 +27,14 @@ public:
     // Auth flow
     Q_INVOKABLE void start_pin_auth();
     Q_INVOKABLE void load_users_from_cache();
-    Q_INVOKABLE void select_user(const QString &userId);
-    Q_INVOKABLE void reauth_select_user(const QString &userId);
+    // pin is only supplied on a retry, after plex.tv has told us the profile
+    // needs one (see userPinRequired). It is never stored.
+    Q_INVOKABLE void select_user(const QString &userId, const QString &pin = QString());
+    Q_INVOKABLE void reauth_select_user(const QString &userId, const QString &pin = QString());
+    // Set when a switch was refused for want of a PIN on a path that has no UI to
+    // prompt from (the current_user_id setting); Root.qml drains it on module entry.
+    Q_INVOKABLE QString pending_pin_user() const { return m_pendingPinUserId; }
+    Q_INVOKABLE void    cancel_pending_pin();
     Q_INVOKABLE void select_server(const QString &machineId);
     Q_INVOKABLE void logout();
 
@@ -43,16 +50,58 @@ public:
     Q_INVOKABLE void load_playlist_items(const QString &ratingKey);
     Q_INVOKABLE void load_categories(const QString &sectionId);
     Q_INVOKABLE void load_category_items(const QString &sectionId, const QString &filterKey);
+    // Folder browsing (Plex's "by folder" library view). folderKey is empty for a
+    // section's top level and otherwise the key the server put on the folder row
+    // being opened. Emits folderLoaded with a mix of folder rows (type "folder",
+    // carrying folderKey) and ordinary media items.
+    Q_INVOKABLE void load_folder(const QString &sectionId, const QString &folderKey);
     Q_INVOKABLE void check_section_capabilities(const QString &sectionId);
     Q_INVOKABLE void load_children(const QString &ratingKey);
+    // Loads the extras (trailers, deleted scenes, …) attached to an item and
+    // emits extrasLoaded with a list of playable details (buildItemDetail shape
+    // plus extraTypeLabel). Emits an empty list on failure — extras are an
+    // enhancement, so errors must not disturb the detail views' main flows.
+    Q_INVOKABLE void load_extras(const QString &ratingKey);
     Q_INVOKABLE void load_on_deck_for(const QString &ratingKey);
     // Resolves the next episode in the same season as currentRatingKey and emits
     // nextEpisodeReady with a full playable detail (same shape as load_item_detail),
     // or an empty map when there is no next episode / on any failure.
     Q_INVOKABLE void load_next_episode(const QString &currentRatingKey);
 
+    // Looks up a show's year by its ratingKey, for naming an NFC card written
+    // from an episode: an episode carries only its own air year and Plex sends no
+    // grandparentYear, so the show must be fetched. Answers from cache when it
+    // can, and emits showYearReady(showRatingKey, year) either way; year is 0
+    // when the show has none. Callers should only ask when they will use it.
+    Q_INVOKABLE void load_show_year(const QString &showRatingKey);
+
     // Playback
     Q_INVOKABLE void load_item_detail(const QString &ratingKey);
+    // Resolves an NFC card's Plex guid to a playable item detail (same shape as
+    // load_item_detail) and emits cardItemReady, or cardError with a message the
+    // UI can show verbatim. mode is "shuffle" for a jukebox-style show/season card
+    // and empty otherwise; it is ignored for movies and episodes. See the
+    // implementation comment for why resolution is a single unscoped guid query.
+    Q_INVOKABLE void resolve_card(const QString &guid, const QString &mode);
+    // Resolves an NFC card that names a *set* — "plex://collection/<ratingKey>" or
+    // "plex://playlist/<ratingKey>" — into the rows it holds, in the same shape the
+    // list view passes to expand_queue, and emits cardQueueReady. Errors report
+    // through cardError, like resolve_card. Resolution happens at tap time rather
+    // than being baked onto the card, so a card follows the set as it changes.
+    Q_INVOKABLE void resolve_card_queue(const QString &ref);
+    // Next episode for a shuffle card, drawn from a shuffle bag over the card's
+    // show/season. Emits nextEpisodeReady (the same signal autoplay already
+    // consumes) or an empty map, so the Player advances identically either way.
+    Q_INVOKABLE void load_random_episode(const QString &scopeRatingKey);
+    // Expands a PLAY ALL / SHUFFLE selection into the ratingKeys it actually
+    // plays: leaf items pass straight through, and every show fans out into all
+    // of its episodes in season/episode order. Takes the row maps the list view
+    // already holds (ratingKey + type) and emits queueReady with the flat list.
+    Q_INVOKABLE void expand_queue(const QVariantList &items);
+    // Next item of a PLAY ALL / SHUFFLE queue over a playlist or collection.
+    // Emits nextEpisodeReady (the same signal autoplay and shuffle cards use), so
+    // the Player advances a queue with the machinery it already has.
+    Q_INVOKABLE void load_queue_item(const QString &ratingKey);
     Q_INVOKABLE void request_transcode(const QString &ratingKey, const QString &partKey,
                                        const QString &sessionId,
                                        const QString &audioId, const QString &subtitleId,
@@ -92,6 +141,9 @@ signals:
     void logoutComplete();
     void authStateChanged();
     void authRevoked();
+    // plex.tv refused the user switch until we supply the profile's PIN.
+    // wrongPin distinguishes "we haven't asked yet" from "that PIN was wrong".
+    void userPinRequired(const QString &userId, bool wrongPin);
 
     void librariesLoaded(const QVariant &libraries);
     void continueWatchingLoaded(const QVariant &items);
@@ -100,13 +152,20 @@ signals:
     void collectionsLoaded(const QVariant &collections);
     void playlistsLoaded(const QVariant &playlists);
     void categoriesLoaded(const QVariant &categories);
+    void folderLoaded(const QVariant &items);
     void capabilitiesLoaded(const QVariant &capabilities);
 
     void itemLoaded(const QVariant &detail);
+    void showYearReady(const QString &showRatingKey, int year);
     void streamUrlReady(const QString &url, const QString &plexToken);
     void childrenLoaded(const QVariant &items);
+    void extrasLoaded(const QVariant &items);
     void inProgressEpisodeLoaded(const QVariant &item);
     void nextEpisodeReady(const QVariant &detail);
+    void queueReady(const QStringList &ratingKeys);
+    void cardItemReady(const QVariant &detail);
+    void cardQueueReady(const QVariant &items);
+    void cardError(const QString &message);
 
     void liveChannelsLoaded(const QVariant &channels);
 
@@ -157,6 +216,36 @@ private:
     // Order is preserved. callback is called synchronously if no seasons are present.
     void flattenSeasons(const QVariantList &rawItems, std::function<void(const QVariantList &)> callback);
 
+    // NFC card resolution helpers.
+    void fetchChildren(const QString &ratingKey,
+                       std::function<void(const QVariantList &)> callback);
+    // Every episode under a show or season, in season/episode order. Works for
+    // both: flattenSeasons is a no-op when the children are already episodes.
+    void fetchEpisodePool(const QString &scopeRatingKey,
+                          std::function<void(const QVariantList &)> callback);
+    // Chooses the episode a show/season card plays in on-deck mode: first
+    // in-progress, else first unwatched, else the first episode.
+    static QVariantMap pickOnDeckEpisode(const QVariantList &pool);
+    // Draws the next ratingKey from the shuffle bag for this scope, rebuilding
+    // and reshuffling when the scope changes or the bag runs out.
+    QString takeFromShuffleBag(const QString &scopeRatingKey, const QVariantList &pool);
+    void emitCardDetail(const QString &ratingKey, bool trackProgress,
+                        const QString &scopeRatingKey);
+    void emitNextEpisode(const QString &ratingKey);
+
+    // Shuffle-card state. A bag (a shuffled permutation played to exhaustion,
+    // then reshuffled) rather than independent random draws: independent draws
+    // clump badly over a long session, and shuffle cards report no timeline, so
+    // there is no watched state to fall back on for variety. Caching the bag also
+    // means a multi-season show costs one pool fetch per cycle, not per episode.
+    QString     m_shuffleScope;
+    QStringList m_shuffleBag;
+    QString     m_lastShuffledKey;
+
+    // showRatingKey -> year, so revisiting a show's episodes costs one lookup.
+    // Cleared on a server switch, since ratingKeys are server-local.
+    QHash<QString, int> m_showYears;
+
     // Connection probing
     void probeConnections(const QJsonArray &connections,
                           std::function<void(QString)> callback);
@@ -168,8 +257,16 @@ private:
 
     // User activation — single path for all three switch callers
     bool isAccountOwner(const QString &userId) const;
-    void activateUser(const QString &userId,
+    static QJsonObject homeUserEntry(const QJsonObject &rawUser);
+    QJsonObject cachedUser(const QString &userId) const;
+    // Checks the profile's PIN gate (live, not cached) and then switches.
+    void activateUser(const QString &userId, const QString &pin,
                       std::function<void(const QVariantList &accessibleServers)> callback);
+    void performUserSwitch(const QString &userId, const QString &pin,
+                           std::function<void(const QVariantList &accessibleServers)> callback);
+
+    // User the current_user_id setting selected but whose switch needs a PIN.
+    QString m_pendingPinUserId;
 
     // PIN auth
     void pollPinTick();
@@ -207,6 +304,7 @@ private:
     QString m_clientId;          // cached after first load
     bool    m_refreshInFlight  = false;
     bool    m_deviceVerified   = false; // set after first successful plex.tv check per session
+    bool    m_serverAuthRetried = false; // guards the one-shot token re-fetch on a PMS 401
 
     // Live TV session state. m_liveDvrId is cached from the last load_live_channels.
     // The rest are set by tune_channel and drive the timeline keep-alive that stops

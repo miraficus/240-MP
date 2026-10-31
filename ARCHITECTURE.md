@@ -44,7 +44,7 @@ The guiding idea: **browse structured content, then hand off to the right tool f
     ModuleList.qml
     Settings.qml
     ...
-    Components/                     # shared QML components (AppBar, qmldir)
+    Components/                     # shared QML components (AppBar, ChoiceOverlay, qmldir)
   Main.qml                          # app root
   CMakeLists.txt
 ```
@@ -167,6 +167,19 @@ appCore.registerModule("com.240mp.<name>", "yourBackend", &yourBackend, ctx);
 
 The module ID lives in exactly one place per module — this call. Declare these members with the exact signatures above and `registerModule` wires them with no other changes to `main.cpp`.
 
+#### Probed, not connected
+
+Two further capabilities are **probed on demand** rather than connected at registration — `AppCore` checks `metaObject()->indexOfMethod(...)` and calls the method with `QMetaObject::invokeMethod` only if the backend declares it. Same idea, but they return a value, so there's nothing to connect:
+
+| Backend member (if declared) | Used by |
+|---|---|
+| `Q_INVOKABLE QString get_auth_state()` | `appCore.get_module_auth_state(moduleId)` — drives the `requires_auth` setting gate |
+| `Q_INVOKABLE QVariantList get_menu_entries()` | `scan_for_modules()` — lets a backend add its own rows to the **main menu** |
+
+`get_menu_entries()` returns a list of `{name, params}`. `AppCore` fills in `entry_point` from the module's manifest and appends the rows to the `modulesLoaded` payload, so `views/ModuleList.qml` renders them like any other row and forwards `params` as `navParams` then the module's `Root.qml` router interprets them.
+
+Rows are appended **after** all module rows on purpose: module row indices then stay stable, so a saved menu position still restores onto the same row when a contributed row appears or disappears. The scripts module uses this to list `favorite = yes` scripts after native 240-MP modules.
+
 ## Playback Hand-off (MpvController)
 
 The current MPV implementation is a good reference implementation of the "browse & hand-off" philosophy. When a module decides to play a video, it hands off to **mpv** rather than rendering video itself. All of that lives in `MpvController` (`src/player/MpvController.h/.cpp`), exposed to QML as the context property **`mpvController`**.
@@ -217,31 +230,91 @@ I think of it like this:
 ```
 app constants → 
   app per-playback → 
-    device decode (user-overridable in config) → 
-      ~/.config/mpv/mpv.conf
+    app presentation (user-set in Settings) → 
+      device decode (user-overridable in config) → 
+        ~/.config/mpv/mpv.conf
 ```
 
 | Layer | Examples | Owner | Where |
 |---|---|---|---|
 | **App constants** | `--input-ipc-server`, `--input-conf`, `--osc`, `--script`, `--log-file`, `--no-input-terminal` | App only | command-line |
 | **App per-playback** | `--start`, `--aid`, `--sub-file`, `--http-header-fields` (stream URL, tokens) | App only | command-line |
+| **App presentation** | `--panscan` (Auto Crop), `--video-output-levels` (Video Levels) | User, via a Settings row | command-line |
 | **Device decode** | `--vo` / `--gpu-context` / `--hwdec` | App auto-detects; user may override via `mpv_video_args` | command-line |
-| **User prefs** | `deinterlace`, `cache`, `sub-scale`, profiles | User | `mpv.conf` |
+| **User prefs** | `deinterlace`, `cache`, `sub-scale`, `audio-device`, profiles | User | `mpv.conf` |
 
-- The first three layers are app-owned and the first two are load-bearing because they wire the IPC control channel, the input/OSC bridge, and (headless) the DRM/VT hand-off. Changing them would break functionality in the app, not just playback, so they are never user-overridable. The 3rd layer (*device decode*) allows a direct user path to override video decode settings if per device tweaks are needed.
+- The first four layers are app-owned and the first two are load-bearing because they wire the IPC control channel, the input/OSC bridge, and (headless) the DRM/VT hand-off. Changing them would break functionality in the app, not just playback, so they are never user-overridable. The last two app layers are the ones the user can steer: *app presentation* through a Settings row (Auto Crop, Video Levels) for the knobs worth reaching without a keyboard, and *device decode* through the `mpv_video_args` override if per device tweaks are needed.
+- A presentation setting left at its default emits **no flag at all** (Video Levels on `Auto`, Auto Crop `Off`), so a `video-output-levels=` line in someone's `mpv.conf` still applies; picking Limited/Full puts it on the command line, where it wins.
 - And all app layers are command-line, so they all win over `mpv.conf`. I do pass no `--no-config`, so mpv will look to read `~/.config/mpv/mpv.conf` on launch, which means users can add anything the app doesn't set explicitly direclty in their MPV config.
 
 ### Custom OSC (Lua)
 
-The on-screen controls mpv shows during playback are custom Lua scripts in `scripts/` (`mpv-osc.lua` for normal playback, `ambient-osc.lua` for Ambient Mode), loaded via mpv's `--script=` flag. Options are passed in with `--script-opts=` (e.g. `transcode-offset=<sec>`). The remote's key events reach these scripts through the `keypress` IPC bridge described above.
+The on-screen controls mpv shows during playback are custom Lua scripts in `scripts/` (`mpv-osc.lua` for normal playback, `mpv-osc-ambient.lua` for Ambient Mode), loaded via mpv's `--script=` flag. Options are passed in with `--script-opts=` (e.g. `transcode-offset=<sec>`). The remote's key events reach these scripts through the `keypress` IPC bridge described above.
 
 ### Raspberry Pi headless hand-off (EGLFS)
 
-On RPi Lite there because there is no display server; Qt draws via EGLFS straight to the KMS/DRM framebuffer, so the app and mpv can't both own the screen at once. `MpvController` performs a DRM/VT hand-off: it saves Qt's DRM CRTC state, switches to a free virtual terminal so mpv can take the framebuffer, and **restores** Qt's CRTC state when mpv exits (`saveDrmCrtcState` / `restoreDrmCrtcState`, `doHeadlessRestore`, plus the VT-switch helpers). This is Linux-only (`#ifdef Q_OS_LINUX`); on macOS the hand-off is a plain fullscreen window swap.
+On RPi Lite there is no display server; Qt draws via EGLFS straight to the KMS/DRM framebuffer, so the app and a fullscreen child can't both own the screen at once. **`DisplayHandoff`** (`src/util/DisplayHandoff.h/.cpp`) owns this hand-off for the whole app. `MpvController` delegates to it and does not implement any of the ioctls itself.
+
+The order is load-bearing and was established against real Pi hardware — read the header comment before touching it:
+
+- **`acquire(owner)`**: VT switch → `drmDropMaster` → save CRTC state. The VT switch goes *first* because it suspends Qt's render thread via the kernel's VT-switch signal before master is dropped; on kernels 5.8+ `drmSetMaster()` returns `EACCES` for non-root while another process holds master, and Qt EGLFS runs `VT_AUTO` and never drops master itself.
+- **`releaseDeferred(owner, cb)`**: after 200 ms (>3 VSync at 60 Hz, so the child's last pending KMS commit can clear), `drmSetMaster` → restore CRTC → switch back, then run `cb`. The restore uses **legacy** `drmModeSetCrtc`, not an atomic commit: the child's atomic cleanup leaves `CRTC_ACTIVE=0` and EGLFS would get `EINVAL` on its first page flip.
+- **`releaseNow(owner)`**: synchronous, for shutdown; `MpvController`'s destructor calls it so quitting mid-playback no longer leaves the Pi on a blank VT.
+
+The `owner` token means two subsystems can never both believe they hold the screen — `acquire()` refuses if someone else holds it, and `isHeldBy()` is the re-entrancy guard for relaunching a child without releasing first. All of it is Linux-only in effect (`isHeadless()` is false on macOS and whenever a compositor is present), where the hand-off is just a fullscreen window swap.
+
+Two consequences that are easy to get wrong, both of them Pi-only and both invisible on any other target:
+
+- **Whatever Qt last put on the glass stays there for the whole hand-off.** The VT switch suspends Qt's renderer, but nothing clears the framebuffer, and we no longer hold DRM master so we cannot. A child that draws immediately (mpv) hides this completely; a child that draws late or never leaves the previous frame frozen on screen, which reads as a hang rather than a hand-off. So **paint the screen you want frozen, wait for it to be presented, and only then call `acquire()`**. As an example `modules/scripts/views/Takeover.qml` does this with a short timer, deliberately not `Qt.callLater`, because what matters is a frame actually presented instead of the scene graph being updated.
+- **The VT we switch to must not be the one we are on.** `findFreeVt()` starts from `VT_OPENQRY`, which reports the lowest VT the kernel considers unused. Activating the VT we are already on would be a silent no-op so Qt never suspends, and master is then dropped out from under a still-drawing Qt, with nothing logged because the ioctl succeeds. `findFreeVt()` takes the active VT and steps past it so that cannot happen.
+
+  In practice `VT_OPENQRY` does not return Qt's own VT, because Qt EGLFS opens `/dev/tty0` for its `KD_GRAPHICS`/`VT_AUTO` handling and `/dev/tty0` *is* the foreground console, which pins that VT's tty count. Measured on an installed card: idle `tty1`, during playback `tty2`, back to `tty1` on exit.
+
+  Note that `VT_OPENQRY`'s notion of "in use" is the *virtual console's* tty count, not "some process has `/dev/ttyN` open". `fuser -v /dev/tty1` comes back empty under the service and yet VT 1 is in use, because the process pinning it opened `/dev/tty0`. `fuser` on the numbered node is the wrong instrument here; read `/sys/class/tty/tty0/active` instead.
+
+On a dev box neither of these bites the same way, because `autovt@` is unmasked there: a getty spawns on the VT we switch to, repaints the console for us, and holds that VT open so `VT_OPENQRY` keeps moving up. The login prompt you see mid-hand-off on a dev Pi is that getty, not anything 240-MP drew.
 
 ### Adding a different hand-off target
 
-The longer-term vision is to hand off to *other* purpose-built tools (e.g. RetroArch), not just mpv. `MpvController` is the template for that: launch the external tool as a `QProcess`, drive it over whatever control channel it offers, surface progress/exit back to QML via signals, and (on RPi Lite) bracket the launch with the same DRM/VT save-and-restore so the framebuffer is handed over cleanly and returned on exit.
+The longer-term vision is to hand off to *other* purpose-built tools (e.g. RetroArch), not just mpv. `MpvController` is the template: launch the external tool as a `QProcess`, drive it over whatever control channel it offers, and surface progress/exit back to QML via signals. **Use `DisplayHandoff` for the screen — do not re-implement the VT/DRM ioctls in a new caller.**
+
+The **scripts module** (`modules/scripts/`, `src/modules/scripts/`) is the second worked example, and generalises the idea to arbitrary user programs. Its `ScriptLauncher` has things that `MpvController` doesn't need:
+
+- **Two run modes per target.** `console` keeps 240-MP on screen and streams the child's merged output into a QML view; `takeover` gives the child the display. The split is per-target. On macOS / desktop Linux / SteamOS a takeover needs nothing at all (the child's window covers ours), and only headless Linux needs the `DisplayHandoff` bracket.
+- **Nothing is handed over before a spawn that might still be refused.** All validation happens first, `QProcess::errorOccurred(FailedToStart)` is handled explicitly (`finished` is *never* emitted in that case), and a started-watchdog covers "started but silent". 
+- **`setsid()` in a child-process modifier**, so the child leads its own process group: `killpg` reaches everything it spawned, and an empty group is how you know the screen is free again. A launcher script that backgrounds its real work and exits immediately would otherwise have the display taken back out from under its children.
+- **Report only after the display is restored.** The caller pops its view on the "finished" signal; doing that while the framebuffer still belongs to the child draws into memory you don't own.
+- **No stop key during a takeover.** A takeover child should own input for it's whole run, and on EGLFS every keystroke is double-delivered (Qt's libinput and the child both read the same evdev devices) so any tap-to-stop key would also fire inside inside a launched takeover application (For example ESC/Back is used by RetroArch's to navigate its menus just like its used inside 240-MP so pressing that key while RA is open would SIGTERM the session mid-run). With this in mind, the runner view is set up to swallow Back events while a takeover is busy and offers no direct stop key. What covers failures instead: the started-watchdog and `FailedToStart` handling, the downgrade-to-console refusal when display state can't be saved, and `~ScriptLauncher`'s SIGTERM → SIGKILL + `releaseNow()` at app quit. Console mode and downgraded runs (where 240-MP kept the screen) still have the Back-to-stop key with `requestStop()`'s SIGTERM → SIGKILL escalation.
+
+## Card Hand-off (NFC → a module)
+
+An NFC card's tag file can point at content another module owns, rather than at a file this module can play itself. The NFC module resolves *which* module, and that module resolves *what to play* — auth, lookup and playback stay where they already live.
+
+**The tag file.** Line 1 is the card UID, line 2 the ref, and an optional line 3 a bare mode token (`shuffle`). Line 3 is deliberately generic rather than Plex-specific so `.m3u` and YouTube-playlist cards can use the same slot later. `parseTagFile` stopped at two lines before, so a third line is backwards-compatible meaning existing cards are unaffected.
+
+**Routing.** `handoffModuleForRef()` in `NfcReaderBackend.cpp` maps a ref's URI scheme to a module id via `kHandoffModules`. `http`/`https` are deliberately absent as those are stream URLs this module hands straight to mpv. A recognised scheme emits `cardHandoffRequested(moduleId, ref, mode)` instead of `playbackRequested(videoPath)`; the file/stream path is untouched. If the target module is disabled the card is refused (`AppCore::is_module_enabled`).
+
+**Navigation.** `Items.qml` resolves the target's entry point with `AppCore::module_entry_point(moduleId)` and emits the **shell-level** `navigateTo` (not the router's internal one). That is why `nfc_reader/views/Root.qml` declares `signal navigateTo(...)` and calls its own router function `navigateToView()`: `Main.qml` only listens for a signal named exactly `navigateTo` on the loaded module, so the name has to be free.
+
+**The receiving module carries a `CardPlay.qml`.** `modules/plex/views/CardPlay.qml` is the reference. It is a thin resolver, not a view the user navigates to:
+
+- `Root.qml` routes to it on `navParams.cardRef`, **ahead of and exclusive of the auth/user gate**. For Plex, falling through that would land a card tap on `UserSelect.qml` whenever `auto_sign_in` is off, and switching profiles from a card would sidestep the profile PIN. A missing sign-in or a pending PIN is surfaced as an error, never a prompt.
+- So it resolves the ref, builds the stream, then **`replaceWith("Player.qml", …)`** — `replaceWith` doesn't push to the nav stack, so the stack stays `[NFC Root] → [Player]` and backing out of playback returns straight to the NFC tap screen instead of stranding the user inside a module so they can tap another card easily after playback stops.
+- It doesn't write player state back to the service (Plex's `set_audio_stream` / `set_subtitle_stream`) — a card tap must not mutate stored per-item preferences. Whatever the server already prefers is what plays.
+- Errors render in the NFC module's visual language, so a card tap looks the same whichever module ends up serving it.
+
+**A card can also name a *set*:** Plex's `CardPlay.qml` recognises `plex://collection/…` and `plex://playlist/…` and hands those off to `QueuePlay.qml` (with `replaceWith`) rather than resolving a stream itself. Note: line 3's `shuffle` means *shuffle this queue*. The set's contents are resolved at tap time, so a card follows the collection or playlist as it changes rather than freezing whatever it held when it was originally written.
+
+**Adding another module** (e.g. Jellyfin, Emby, …) means: a row in `kHandoffModules`, a `CardPlay.qml`, and a `cardRef` branch in that module's `Root.qml`. Nothing in the NFC module is service-specific.
+
+### Plex specifics
+
+- Cards store a Plex **guid** (`plex://movie/…`), never a ratingKey because guids survive library re-scans and moves between servers, which a physical card on a shelf will benefit from. Resolution is `/library/all?guid=` unscoped: it searches every section, so the card says *what* to play and the app decides *where* it lives. That query omits `Media`/`Part` unless given a `type=` filter so the chosen item is always re-fetched by ratingKey. External ids (`imdb://`, `tmdb://`) are **not** resolvable through this filter.
+- Libraries on a legacy metadata agent report `com.plexapp.agents.*://…` guids. They resolve fine and are routed to Plex by prefix, but they're agent-scoped: re-agenting such a library breaks cards written against it.
+- **Cards never switch server or user.** `select_server` persists config (see the settings-write rule), and auto-switching a Plex Home profile would be a PIN bypass in physical form. Wrong server / no permission / signed out are all errors.
+- A **shuffle** card sets `trackProgress: false` on the Player, suppressing both `update_timeline` calls. Progress reporting is entirely client-side, so that is sufficient to leave watched state, Continue Watching and on-deck untouched.
+- **Collections and playlists are the exception to the guid rule.** They are server-local, user-created objects with no metadata-agent guid to be portable with, so their cards carry the ratingKey (`plex://collection/<ratingKey>`) and `resolve_card_queue` fetches `/library/collections/<key>/items` or `/playlists/<key>/items` in one request. Such a card breaks only if the set is deleted and recreated. The rows go through `formatItem` + `flattenSeasons` exactly as the in-app loaders do, so `expand_queue` fans shows out identically either way.
+- Shuffle keeps rolling via a **shuffle bag** in `PlexBackend` (`m_shuffleBag`): a shuffled permutation played to exhaustion then reshuffled, rather than independent random draws, which clump badly over the hours a jukebox card runs. `resolve_card` reports the show/season as `cardScope`; the Player's EOF branch calls `load_random_episode(scope)` instead of `load_next_episode(ratingKey)`. Both emit `nextEpisodeReady`, so the advance itself is shared. Continuation respects the module's `autoplay_next_episode` setting.
 
 ## Input (InputManager)
 
@@ -264,6 +337,10 @@ All input arrives in QML as **ordinary key events** — views bind `Keys.onPress
 3. **Delivery** — while the Qt window is **active**, synthesized `QKeyEvent`s are posted to the root QQuickWindow and reach the QML `activeFocusItem` like real key presses; on RPi/EGLFS the window is always active, so during playback they flow through the Player views' existing key forwarding (`mpvController.sendKey(...)`). When the window is **inactive** (like on MacOS where fullscreen mpv holds OS focus) and QQuickWindow has no `activeFocusItem`; `InputManager` instead emits `mpvKeyRequested(key)`, which `main.cpp` connects to `MpvController::sendKey`.  That will drive mpv directly over IPC with the same key names. The net result is that gamepads drive mpv identically to the keyboard on both platforms. Held directions auto-repeat (400 ms delay, 100 ms interval) so lists and ff/rw feel like keyboard repeat.
 4. **User overrides** — `$DATA_ROOT/input.cfg` (`<input> <action>` per line, `#` comments, merged over defaults, live-reloaded via `QFileSystemWatcher`). An optional `$DATA_ROOT/gamecontrollerdb.txt` can add SDL mappings for exotic pads. Check out grammar and examples in [BUILDING.md → Gamepad input](BUILDING.md#gamepad-input-inputcfg).
 5. **Adaptive footers** — `inputManager` exposes `lastInputDevice` (`"keyboard"` | `"gamepad"`, tracked via an app-wide event filter that ignores the synthesized events by their magic `nativeScanCode`) and a `hints` map (`back`, `select`, `navigate`, `change`, `browse`, `play_pause`). Main.qml mirrors it as **`root.hints`**, and footer hint labels bind to that — e.g. `root.hints.back + ":BACK"` renders `[ESC]:BACK` while the keyboard is active and `[B]:BACK` after a controller press, reflecting the live mapping. Views should bind to `root.hints.*` (similar to how we handle `root.sh`), **not** `inputManager.hints.*` because id-resolved `root.*` will stay valid when swappig views.  If you don't when the module Loader swaps views, the dying view's context properties will resolve to null and bindings on them will throw TypeErrors during teardown. Face-button labels are translated to what's printed on the **last-touched** controller via `SDL_GameControllerGetType` (Nintendo swaps A/B & X/Y; PlayStation shows X/O/SQ/TR), and `label <button> <text>` lines in input.cfg override them for pads that misreport their type. New views with footers should now use `root.hints.*`, and not hardcoded `[ESC]`/`[ENTER]` strings like I had in my previous implementation.
+
+### Input survives a display hand-off
+
+On RPi/EGLFS, input keeps flowing while Qt is VT-switched away: Qt's libinput/evdev handlers and SDL both read `/dev/input/event*` directly, with no VT gating. **Only rendering is suspended.** That's why a Player view can forward keys to fullscreen mpv over IPC on the Pi.
 
 ## C++ Backend Patterns
 
@@ -395,6 +472,22 @@ FocusScope {
             positionViewAtIndex(currentIndex, ListView.Contain)
         }
 
+        // Up/Down with wraparound. The positionViewAtIndex call is required:
+        // changing currentIndex alone does not scroll a clipped ListView, so
+        // without it a wrap moves the selection off-screen.
+        Keys.onUpPressed: {
+            if (count === 0) return
+            if (currentIndex > 0) currentIndex--
+            else currentIndex = count - 1
+            itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
+        }
+        Keys.onDownPressed: {
+            if (count === 0) return
+            if (currentIndex < count - 1) currentIndex++
+            else currentIndex = 0
+            itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
+        }
+
         Keys.onReturnPressed: {
             navigateTo("Detail.qml", { item: model[currentIndex] }, { currentIndex: currentIndex })
         }
@@ -438,11 +531,14 @@ FocusScope {
 **View rules:**
 - Always declare `property var navParams: ({})` — the router passes params via `Loader.setSource`.
 - List views also declare `property var navListState: navParams.navListState || ({})` and restore position in `Component.onCompleted`.
-- `navigateTo` always takes 3 args: `(path, params, listState)` — pass `{ currentIndex: listView.currentIndex }` as listState when pushing to a detail view.
+- `navigateTo` always takes 3 args: `(path, params, listState)` — pass `{ currentIndex: listView.currentIndex }` as listState when pushing to a detail view. Detail views with multiple focus rows (play button / list) also pass `focusRow` in listState and restore it in their data-loaded handler, so backing in lands on the row the user left.
+- Up/Down navigation wraps: past the last item returns to the first and vice versa, always followed by `positionViewAtIndex(..., ListView.Contain)` (see the handlers in Items.qml above). Views with an A–Z letter panel additionally keep `letterList.currentIndex` in sync on every move and wrap the panel itself — `modules/jellyfin/views/Items.qml` is the reference.
 - Leaf views only need `signal goBack()` — no `navigateTo`.
 - Use `root.sh` / `root.sw` for all margins and sizes — never hardcoded pixels. This keeps layouts responsive across CRT (240p/480i, watch overscan) and HDMI/LCD.
 - Access shared state via `moduleRoot.moduleName`, `moduleRoot.moduleIcon`.
 - Navigate via signals — never call router functions directly.
+- `navParams.fromAppStartup` is `true` only when the app booted straight into this module because it's the configured **Start On Module** — never when the user navigated in from the main menu. `Main.qml` sets it on the startup-module `setSource`; a module's `Root.qml` forwards it by passing `navParams` into its first `navigateTo`. Use it to gate boot-only behaviour such as Ambient Mode's Auto-Launch Playback, so the module's normal screens stay reachable from the menu.
+- A view that emits `navigateTo` from its own `Component.onCompleted` must defer it with `Qt.callLater` — the router's `Connections { target: internalLoader.item }` only rebinds after `setSource()` returns, so a synchronous emit goes out before anything is listening.
 
 ## Components (WIP)
 
@@ -457,6 +553,40 @@ Shared QML components live in `views/Components/` (registered via `qmldir`, impo
 | `subtitle` | `string` | Optional context label (hidden when empty) |
 
 The icon is automatically colorized to the app accent color
+
+### ChoiceOverlay (`views/Components/ChoiceOverlay.qml`)
+
+Full-screen keyboard-driven chooser: a prompt, the thing being acted on, and a short list of options. Use it whenever a single button has to ask "which way?" — the Plex show/season PLAY button asks next-episode vs shuffle through it.
+
+| Property | Type | Description |
+|---|---|---|
+| `promptText` | `string` | The question, e.g. `"What would you like to play?"` |
+| `subtitleText` | `string` | What is being acted on — the show or season name (hidden when empty) |
+| `choices` | `var` | List of `{ label, action }` maps |
+
+Call `open()` to show it. It emits `activated(action)` when the user picks one and `closed()` once it hides (bind `onClosed: <host>.forceActiveFocus()`); Up/Down wrap, Esc/Back cancels. As with NfcCardWriter, **behaviour keys off `action`, never the label text** — labels are free to change with state (`"Resume Next Episode"` vs `"Play Next Episode"`) without touching the handler.
+
+### NfcCardWriter (`views/Components/NfcCardWriter.qml`)
+
+Full-screen takeover that writes an NFC card for the item a detail view is showing. Shared so every module reachable from a card writes them the same way; the host supplies only what goes on the card.
+
+| Property | Type | Description |
+|---|---|---|
+| `cardRef` | `string` | Line 2 of the tag file — e.g. a Plex guid, or a set ref like `plex://collection/<ratingKey>` |
+| `cardTitle` | `string` | Filename **and** display title |
+| `offerShuffle` | `bool` | Show the shuffle option — only meaningful for a set (show, season, collection, playlist) |
+| `orderedLabel` / `shuffleLabel` | `string` | What the two `offerShuffle` choices are called. Defaults (`"Sequential Episodes"` / `"Shuffle Episodes"`) suit a show or season; Plex's collection and playlist lists override them with `"In Order"` / `"Shuffled"`, since a set of movies has no episodes to sequence |
+| `available` | `bool` | Read-only. True when the NFC module is enabled and a reader is connected — bind the host's entry-point row's `visible` to this |
+
+Call `open()` to show it; it emits `closed()` when done. Two things worth preserving if you touch it:
+
+- **Capture is armed only while it is open**, so a card resting near the reader while the user browses can never trigger a write. Arming is always a deliberate action, never a passive listen. The backend handles capture *ahead of* its module-active gate, because arming happens from another module's screen.
+- **Choices carry a stable `action` field; behaviour never keys off the label text.** An earlier version matched `indexOf("shuffle")` on the label and silently broke the moment the wording changed.
+
+Writing also offers an option to the user to replace any previous tag file for that UID, that way a card can be written easily from with the UI.
+
+- **Two cards never share a filename.** `writeCardFile` suffixes the name (`Dune (2021) (2).txt`) when the target name already belongs to a different UID. Hosts should still qualify `cardTitle` so the suffix stays rare.  For example Plex names cards with the year of the item like: `Dune (2021)`, `Cowboy Bebop (1998) - S1`, `Cowboy Bebop (1998) - S1E5`.
+- **The host's title is passed through verbatim.**  To keep the NFC writing generalized for other callers its built to just pass the name through cleanly and the NFC card writing portion doesn't reason about it. I had a use case in my Plex library where an item already carried the year in its title (e.g. Cowboy Bebop (2021)) so for that case the name written is `Cowboy Bebop (2021) (2021).txt`. This is deliberate because inferring if trailing `(NNNN)` is a year or something else would guess at a user's own metadata (think of the the use case for Cyberpunk 2077). The cost of guessing wrong I think outweighs a cosmetic repeat and users can always choose rename the tag file manually as well without any impact to the mapping.
 
 ## Config Storage
 

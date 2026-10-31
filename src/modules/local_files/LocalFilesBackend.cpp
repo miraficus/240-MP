@@ -125,6 +125,15 @@ void LocalFilesBackend::get_resume_playback_options() {
     emit dynamicOptionsReady("resume_playback", options);
 }
 
+void LocalFilesBackend::get_shuffle_playback_options() {
+    QVariantList options;
+    QVariantMap ask; ask["id"] = "ask"; ask["label"] = "Ask";
+    QVariantMap yes; yes["id"] = "yes"; yes["label"] = "Always"; yes["old"] = true;
+    QVariantMap no;  no["id"]  = "no";  no["label"]  = "Never";  no["old"]  = false;
+    options << ask << yes << no;
+    emit dynamicOptionsReady("shuffle_playback", options);
+}
+
 void LocalFilesBackend::get_image_duration_options() {
     QVariantList options;
     QVariantMap five;   five["id"]   = "5";  five["label"]   = "5 Seconds";
@@ -162,9 +171,10 @@ QString LocalFilesBackend::mediaRoot() const {
 }
 
 void LocalFilesBackend::setMediaRoot(const QString &path) {
-    m_mediaRoot = path;
-    QDir().mkpath(path);
-    qDebug("[LocalFiles] media root: %s", qPrintable(path));
+    // An empty (reset) setting means back to the dataRoot/media default.
+    m_mediaRoot = path.isEmpty() ? m_dataRoot + "/media" : path;
+    QDir().mkpath(m_mediaRoot);
+    qDebug("[LocalFiles] media root: %s", qPrintable(m_mediaRoot));
 }
 
 void LocalFilesBackend::onSettingChanged(const QString &moduleId, const QString &key, const QVariant &value) {

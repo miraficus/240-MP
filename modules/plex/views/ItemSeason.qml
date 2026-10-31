@@ -5,6 +5,7 @@ FocusScope {
     id: seasonRoot
 
     property var navParams: ({})
+    property var navListState: navParams.navListState || ({})
 
     signal navigateTo(string path, var params, var listState)
     signal goBack()
@@ -16,8 +17,26 @@ FocusScope {
     property var episodes: []
     property bool isLoading: false
 
-    // Focus rows: 0 = play button, 1 = episode list
+    // Extras attached to this season (trailers, behind the scenes, …)
+    property var extras: []
+    readonly property bool hasExtras: extras.length > 0
+
+    // Drives both the play button's PLAY/RSUM label and the wording of the
+    // matching choice in the play prompt — one expression, two consumers.
+    readonly property bool resumeAvailable: {
+        for (var i = 0; i < episodes.length; i++) {
+            if (episodes[i].viewOffset > 0) return true
+        }
+        return false
+    }
+
+    // Focus rows: 0 = play button, 1 = extras (when hasExtras),
+    // 4 = write NFC card (when a reader is present), 2 = episode list.
+    // The NFC row is 4 rather than 3 so the existing saved-focus restores, which
+    // compare against literal row numbers, keep working untouched.
     property int focusRow: 0
+
+    property color baseColor: root.primaryColor
 
     Connections {
         target: plexBackend
@@ -26,8 +45,16 @@ FocusScope {
             seasonRoot.isLoading = false
             seasonRoot.episodes = loadedItems
             if (loadedItems.length > 0) {
-                episodeList.currentIndex = 0
+                var restore = (navListState.currentIndex !== undefined) ? navListState.currentIndex : 0
+                episodeList.currentIndex = Math.min(restore, loadedItems.length - 1)
+                if (navListState.focusRow === 2) focusRow = 2
+                episodeList.positionViewAtIndex(episodeList.currentIndex, ListView.Contain)
             }
+        }
+
+        function onExtrasLoaded(items) {
+            seasonRoot.extras = items
+            if (navListState.focusRow === 1 && items.length > 0) focusRow = 1
         }
 
         function onErrorOccurred(msg) {
@@ -39,38 +66,98 @@ FocusScope {
     Component.onCompleted: {
         isLoading = true
         focusRow = 0
-        if (item.ratingKey) plexBackend.load_children(item.ratingKey)
+        if (item.ratingKey) {
+            plexBackend.load_children(item.ratingKey)
+            plexBackend.load_extras(item.ratingKey)
+        }
     }
 
     focus: true
 
+    // Season label as displayed in the header line ("SPECIALS" / "SEASON n")
+    function seasonLabel() {
+        if (item.index === 0) return "Specials"
+        if (item.index) return "Season " + item.index
+        return ""
+    }
+
     Keys.onUpPressed: {
-        if (focusRow === 1) {
+        if (focusRow === 2) {
             if (episodeList.currentIndex > 0) {
                 episodeList.currentIndex--
             } else {
-                focusRow = 0
+                focusRow = cardWriter.available ? 4 : (hasExtras ? 1 : 0)
+            }
+        } else if (focusRow === 4) {
+            focusRow = hasExtras ? 1 : 0
+        } else if (focusRow === 1) {
+            focusRow = 0
+        } else {
+            if (episodes.length > 0) {
+                episodeList.currentIndex = episodes.length - 1
+                focusRow = 2
+            } else if (cardWriter.available) {
+                focusRow = 4
+            } else if (hasExtras) {
+                focusRow = 1
             }
         }
+        episodeList.positionViewAtIndex(episodeList.currentIndex, ListView.Contain)
     }
     Keys.onDownPressed: {
         if (focusRow === 0) {
-            if (episodes.length > 0) focusRow = 1
+            if (hasExtras) focusRow = 1
+            else if (cardWriter.available) focusRow = 4
+            else if (episodes.length > 0) {
+                episodeList.currentIndex = 0
+                focusRow = 2
+            }
+        } else if (focusRow === 1) {
+            if (cardWriter.available) focusRow = 4
+            else if (episodes.length > 0) {
+                episodeList.currentIndex = 0
+                focusRow = 2
+            } else {
+                focusRow = 0
+            }
+        } else if (focusRow === 4) {
+            if (episodes.length > 0) {
+                episodeList.currentIndex = 0
+                focusRow = 2
+            } else {
+                focusRow = 0
+            }
         } else {
-            if (episodeList.currentIndex < episodes.length - 1)
+            if (episodeList.currentIndex < episodes.length - 1) {
                 episodeList.currentIndex++
+            } else {
+                episodeList.currentIndex = 0
+                focusRow = 0
+            }
         }
+        episodeList.positionViewAtIndex(episodeList.currentIndex, ListView.Contain)
     }
     Keys.onReturnPressed: {
         if (focusRow === 0) {
-            playBestEpisode()
+            if (episodes.length === 0) return
+            playChoice.open()
+        } else if (focusRow === 4) {
+            cardWriter.open()
+        } else if (focusRow === 1) {
+            var label = seasonLabel()
+            seasonRoot.navigateTo("Extras.qml", {
+                extras: extras,
+                ratingKey: item.ratingKey,
+                itemTitle: showTitle + (label ? " - " + label : ""),
+                libraryName: libraryName
+            }, { focusRow: 1 })
         } else {
             var ep = episodes[episodeList.currentIndex]
             if (!ep) return
             seasonRoot.navigateTo("Item.qml", {
                 item: ep,
                 libraryName: libraryName
-            }, { currentIndex: episodeList.currentIndex })
+            }, { currentIndex: episodeList.currentIndex, focusRow: 2 })
         }
     }
     Keys.onPressed: function(event) {
@@ -144,27 +231,64 @@ FocusScope {
             height: root.sh * 0.175 //84
             spacing: root.sw * 0.0375 //24
 
-            // PLAY / RSUM button
-            Rectangle {
-                id: playButton
-                color: focusRow === 0 ? root.accentColor : root.surfaceColor
-                border.color: focusRow === 0 ? root.accentColor : root.tertiaryColor
+            Column {
                 width: root.sw * 0.1875 //120
-                height: root.sh * 0.1166667 //56
-                border.width: root.sh * 0.003125 //2
 
-                Text {
-                    anchors.centerIn: parent
-                    text: {
-                        // Show RSUM if any in-progress episode exists
-                        for (var i = 0; i < seasonRoot.episodes.length; i++) {
-                            if (seasonRoot.episodes[i].viewOffset > 0) return "RSUM \u25BA"
-                        }
-                        return "PLAY \u25BA"
+                // PLAY / RSUM button
+                Rectangle {
+                    id: playButton
+                    color: focusRow === 0 ? root.accentColor : root.surfaceColor
+                    border.color: focusRow === 0 ? root.accentColor : root.tertiaryColor
+                    width: root.sw * 0.1875 //120
+                    height: root.sh * 0.1166667 //56
+                    border.width: root.sh * 0.003125 //2
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: seasonRoot.resumeAvailable ? "RSUM \u25BA" : "PLAY \u25BA"
+                        color: focusRow === 0 ? root.surfaceColor : root.primaryColor
+                        font.family: root.globalFont
+                        font.pixelSize: root.sh * 0.05 //24
                     }
-                    color: focusRow === 0 ? root.surfaceColor : root.primaryColor
-                    font.family: root.globalFont
-                    font.pixelSize: root.sh * 0.05 //24
+                }
+
+                // Extras Button
+                Rectangle {
+                    id: extrasButton
+                    visible: seasonRoot.hasExtras
+                    color: focusRow === 1 ? root.accentColor : Qt.rgba(baseColor.r, baseColor.g, baseColor.b, 0.1)
+                    width: parent.width
+                    height: extrasLabel.implicitHeight + root.sh * 0.025 //12
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Text {
+                        id: extrasLabel
+                        text: "VIEW EXTRAS"
+                        color: focusRow === 1 ? root.surfaceColor : root.primaryColor
+                        font.family: root.globalFont
+                        anchors.centerIn: parent
+                        font.pixelSize: root.sh * 0.025 //12
+                    }
+                }
+
+                // Write NFC Card. Directly under Extras so it collapses upward
+                // when there are no extras, leaving screen height unchanged.
+                Rectangle {
+                    id: writeCardButton
+                    visible: cardWriter.available
+                    color: focusRow === 4 ? root.accentColor : Qt.rgba(baseColor.r, baseColor.g, baseColor.b, 0.1)
+                    width: parent.width
+                    height: writeCardLabel.implicitHeight + root.sh * 0.025 //12
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Text {
+                        id: writeCardLabel
+                        text: "WRITE NFC CARD"
+                        color: focusRow === 4 ? root.surfaceColor : root.primaryColor
+                        font.family: root.globalFont
+                        anchors.centerIn: parent
+                        font.pixelSize: root.sh * 0.025 //12
+                    }
                 }
             }
 
@@ -204,27 +328,13 @@ FocusScope {
             }
         }
 
-        // Seasons
-        Text {
-            id: episodeListLabel
-            anchors.top: seasonDetails.bottom
-            text: "Episodes:"
-            color: root.secondaryColor
-            font.family: root.globalFont
-            font.capitalization: Font.AllUppercase
-            anchors.topMargin: root.sh * 0.0145833 //7
-            leftPadding: root.sw * 0.009375 //6;
-            rightPadding: root.sw * 0.009375 //6;
-            font.pixelSize: root.sh * 0.0291667 //14
-        }
-
         ListView {
             id: episodeList
             model: episodes
-            anchors.top: episodeListLabel.bottom
+            anchors.top: seasonDetails.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.topMargin: root.sh * 0.0145833 //7
+            anchors.topMargin: root.sh * 0.05625 //27
             height: root.sh * 0.2916667 //140
             clip: true
 
@@ -241,7 +351,7 @@ FocusScope {
                     Rectangle {
                         color: root.accentColor
                         anchors.fill: rowText
-                        visible: episodeList.currentIndex === index && focusRow === 1
+                        visible: episodeList.currentIndex === index && focusRow === 2
                     }
 
                     Text {
@@ -252,7 +362,7 @@ FocusScope {
                             var prefix = (s || e) ? (s + e + ": ") : ""
                             return prefix + (modelData.title || "")
                         }
-                        color: (episodeList.currentIndex === index && focusRow === 1)
+                        color: (episodeList.currentIndex === index && focusRow === 2)
                                ? root.surfaceColor : root.primaryColor
                         font.family: root.globalFont
                         font.capitalization: Font.AllUppercase
@@ -267,7 +377,7 @@ FocusScope {
 
                     SequentialAnimation {
                         running: (episodeList.currentIndex === index) &&
-                                 (focusRow === 1) &&
+                                 (focusRow === 2) &&
                                  (rowText.implicitWidth > textClip.width)
                         loops: Animation.Infinite
                         onRunningChanged: if (!running) rowText.x = 0
@@ -297,4 +407,48 @@ FocusScope {
         anchors.leftMargin: root.sw * 0.125 //80
         font.pixelSize: root.sh * 0.0333333 //16
     }
+    // PLAY prompt. Shuffle plays as a jukebox — endless random episodes drawn
+    // from this season, reporting no timeline — so it must be a deliberate
+    // choice, not something the play button silently does.
+    ChoiceOverlay {
+        id: playChoice
+        anchors.fill: parent
+        promptText:   "What would you like to play?"
+        subtitleText: seasonRoot.showTitle
+                      + (seasonRoot.seasonLabel() ? " - " + seasonRoot.seasonLabel() : "")
+        choices: [
+            { label: seasonRoot.resumeAvailable ? "Resume Next Episode" : "Play Next Episode",
+              action: "next" },
+            { label: "Shuffle Episodes", action: "shuffle" }
+        ]
+        onClosed: seasonRoot.forceActiveFocus()
+        onActivated: function(action) {
+            if (action === "shuffle") {
+                var label = seasonRoot.seasonLabel()
+                seasonRoot.navigateTo("QueuePlay.qml", {
+                    shuffleScope: item.ratingKey,
+                    title:        showTitle + (label ? " - " + label : ""),
+                    libraryName:  libraryName
+                }, { focusRow: 0 })
+            } else {
+                seasonRoot.playBestEpisode()
+            }
+        }
+    }
+
+    NfcCardWriter {
+        id: cardWriter
+        anchors.fill: parent
+        offerShuffle: true
+        cardRef:   item.guid || ""
+        // "Show (Year) - S1" rather than "Show - Season 1", so season cards for one
+        // show stay distinct, sort next to that show's episode cards, and don't
+        // collide with a same-named show from another year. parentYear is the
+        // show's year — a season carries no year of its own.
+        cardTitle: seasonRoot.showTitle
+                   + (item.parentYear ? " (" + item.parentYear + ")" : "")
+                   + (item.index !== undefined ? " - S" + item.index : "")
+        onClosed: seasonRoot.forceActiveFocus()
+    }
+
 }

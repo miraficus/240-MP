@@ -26,7 +26,7 @@ public:
     QString appVersion() const { return QCoreApplication::applicationVersion(); }
 
     // True when launched by the autostart systemd service (which injects MP240_AUTOSTART=1).
-    // Gates the quit overlay's "Exit to Terminal" option, which only makes sense on a
+    // Gates the quit overlay's "Reboot" / "Exit to Terminal" options, which only make sense on a
     // headless RPi running under the service. See scripts/install.sh and 240mp-stop.
     Q_INVOKABLE bool isAutostartSession() const {
         return qEnvironmentVariableIsSet("MP240_AUTOSTART");
@@ -45,8 +45,17 @@ public:
     Q_INVOKABLE QVariantList listDirectories(const QString &path);
     Q_INVOKABLE QString parentDirectory(const QString &path);
     Q_INVOKABLE QString homePath();
+    Q_INVOKABLE QString localIpAddress() const;
     Q_INVOKABLE QString startupModuleEntryPoint() const;
     Q_INVOKABLE QString get_module_auth_state(const QString &moduleId);
+    // Enabled state of a module by id, resolved the same way the module list
+    // resolves it (config override, else manifest default, else true). Unknown
+    // ids are not enabled.
+    Q_INVOKABLE bool is_module_enabled(const QString &moduleId) const;
+    // APP_ROOT-relative QML entry point of a module by id ("modules/plex/views/Root.qml"),
+    // or empty when the module is unknown. Lets one module route into another
+    // without hardcoding a path across module boundaries.
+    Q_INVOKABLE QString module_entry_point(const QString &moduleId) const;
 
     // Registers a module backend: stores it for action routing, exposes it to QML under
     // contextProperty, and connects its optional signals/slots by introspection (only
@@ -72,6 +81,9 @@ private:
     QJsonObject loadConfig() const;
     void saveConfig(const QJsonObject &config) const;
     QString moduleIdForBackend(QObject *backend) const;
+    // Extra top-level menu rows a module's backend wants to contribute. Probed,
+    // not connected — see the comment at the call site in scan_for_modules.
+    QVariantList menuEntriesForModule(const QString &moduleId) const;
     // Resolve a module's enabled state: config override if present, else the
     // manifest default (an "enabled" setting whose default is "OFF"), else true.
     bool isModuleEnabled(const ModuleEntry &m, const QJsonObject &modulesConfig) const;

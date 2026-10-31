@@ -196,9 +196,15 @@ FocusScope {
 
         Keys.onUpPressed: {
             if (currentIndex > 0) currentIndex--
+            else {
+                currentIndex = schemaItems.length-1
+            }
+            settingsList.positionViewAtIndex(currentIndex, ListView.Contain)
         }
         Keys.onDownPressed: {
             if (currentIndex < count - 1) currentIndex++
+            else currentIndex = 0
+            settingsList.positionViewAtIndex(currentIndex, ListView.Contain)
         }
 
         Keys.onLeftPressed: {

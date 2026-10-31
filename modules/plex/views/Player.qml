@@ -27,6 +27,27 @@ FocusScope {
     property var    imageSubtitleIds: navParams.imageSubtitleIds || []
     property string selectedAudioId:    navParams.selectedAudioId    || ""
     property string selectedSubtitleId: navParams.selectedSubtitleId || "0"
+    // Extras pass false: "next episode" has no meaning for a trailer/clip, so a
+    // natural end must return to the Extras list instead of probing for one.
+    property bool   allowAutoplay:      navParams.allowAutoplay !== false
+    // False when this playback session must not write anything back to Plex.
+    // Shuffle-mode NFC cards play as a jukebox: no timeline is reported, so the
+    // show's watched state, Continue Watching and on-deck are all left alone.
+    // Progress reporting is entirely client-side (the two update_timeline calls
+    // below are the only ones), so suppressing them is sufficient — nothing
+    // server-side marks an item watched. It also gates the per-part audio and
+    // subtitle selections persisted on autoplay (see advanceToEpisode).
+    property bool   trackProgress:      navParams.trackProgress !== false
+    // Show/season ratingKey a shuffle card draws its episodes from; empty for
+    // every other kind of playback, which advances sequentially.
+    property string shuffleScope:       navParams.shuffleScope || ""
+    // PLAY ALL / SHUFFLE over a playlist or collection: the ordered ratingKeys of
+    // everything still to play, and where in them the current item sits. Empty for
+    // every other kind of playback. A queue advances unconditionally — the user
+    // asked for the whole set — so it is checked ahead of autoplayNext, and
+    // QueuePlay.qml passes allowAutoplay: false to keep the two from racing.
+    property var    queue:              navParams.queue || []
+    property int    queueIndex:         navParams.queueIndex || 0
 
     property bool stoppedReported:    false
     property bool playbackStarted:    false
@@ -108,6 +129,7 @@ FocusScope {
     function reportStopped(finalPositionMs, finalDurationMs) {
         if (stoppedReported) return
         stoppedReported = true
+        if (!trackProgress) return
         var pos = lastKnownPositionMs || finalPositionMs
         var dur = lastKnownDurationMs || finalDurationMs
         plexBackend.update_timeline(ratingKey, partKey, "stopped", pos, dur)
@@ -252,12 +274,26 @@ FocusScope {
             // Empty detail → no next episode in the season (or a lookup failure).
             // Fall back to the standard behavior: return to the detail view.
             if (!detail || !detail.ratingKey) {
+                // Inside a queue an unplayable entry is skipped instead: one bad
+                // item must not end a playlist the user asked to play in full.
+                if (playerRoot.requestNextQueueItem()) return
                 pendingNextEpisode = false
                 goBack()
                 return
             }
             playerRoot.advanceToEpisode(detail)
         }
+    }
+
+    // Ask the backend for the next item of the queue, if there is one. Reports
+    // through nextEpisodeReady, so the advance is the same code path as autoplay.
+    // Returns false when there is no queue or it is exhausted.
+    function requestNextQueueItem() {
+        if (queue.length === 0 || queueIndex + 1 >= queue.length) return false
+        queueIndex++
+        pendingNextEpisode = true
+        plexBackend.load_queue_item(queue[queueIndex])
+        return true
     }
 
     // Swap the player's context to the next episode in place (no navigation) and
@@ -290,7 +326,11 @@ FocusScope {
         // Repoint the BACK target so exiting returns to THIS episode's detail
         // screen, not the one we auto-advanced from. Item.qml reloads from
         // item.ratingKey, so a minimal item carrying the new keys suffices.
-        updateBackItem({
+        // A queue was launched with replaceWith, so the stack top is the list the
+        // queue came from — leave it pointing at the list. Same for a shuffle,
+        // whose stack top is the show or season being shuffled: repointing it at
+        // an episode would leave a show detail screen rendering an episode.
+        if (queue.length === 0 && shuffleScope === "") updateBackItem({
             ratingKey: detail.ratingKey,
             type: detail.type || "episode",
             title: detail.title || "",
@@ -308,9 +348,13 @@ FocusScope {
         selectedSubtitleId = subId
         captureCarryLanguages()
 
-        // Persist the chosen tracks to Plex so a transcode burns the right streams
-        // (mirrors Item.qml's behavior before playback).
-        if (partId) {
+        // Persist the chosen tracks to Plex, so the next play of this episode
+        // anywhere remembers them (mirrors Item.qml's behavior before playback).
+        // Skipped when this session doesn't write back to Plex: CardPlay.qml
+        // skips the same call for a card's first episode, and the languages
+        // carried onto a shuffled episode are a match, not a user choice — the
+        // transcode gets its stream IDs from request_transcode's query either way.
+        if (trackProgress && partId) {
             if (audioId) plexBackend.set_audio_stream(audioId, partId)
             plexBackend.set_subtitle_stream(subId, partId)
         }
@@ -363,9 +407,21 @@ FocusScope {
             // onNextEpisodeReady falls back to goBack(). Everything else returns to
             // the detail view here.
             reportStopped(finalPositionMs, finalDurationMs)
+            if (reason === "eof" && queue.length > 0) {
+                // A queue advances regardless of the autoplay setting: playing the
+                // whole set is what the user selected. Exhausted → back to the list.
+                if (requestNextQueueItem()) return
+                goBack()
+                return
+            }
             if (reason === "eof" && autoplayNext) {
                 pendingNextEpisode = true
-                plexBackend.load_next_episode(ratingKey)
+                // Same advance machinery either way — only the source of the next
+                // episode differs, and both report through nextEpisodeReady.
+                if (shuffleScope !== "")
+                    plexBackend.load_random_episode(shuffleScope)
+                else
+                    plexBackend.load_next_episode(ratingKey)
                 return
             }
             goBack()
@@ -377,7 +433,7 @@ FocusScope {
         repeat:   true
         running:  true
         onTriggered: {
-            if (mpvController.position > 0)
+            if (trackProgress && mpvController.position > 0)
                 plexBackend.update_timeline(ratingKey, partKey, "playing",
                                             mpvController.position, mpvController.duration)
         }
@@ -390,7 +446,7 @@ FocusScope {
         // Match ModuleSettings.qml's reading of a toggle: stored as a real bool
         // once the user touches it, but accept the legacy "ON" string too.
         var autoplayRaw = appCore.get_setting(moduleRoot.moduleId, "autoplay_next_episode")
-        autoplayNext  = (autoplayRaw === true || autoplayRaw === "ON")
+        autoplayNext  = allowAutoplay && (autoplayRaw === true || autoplayRaw === "ON")
 
         if (resumeSetting === "ask" && viewOffset > 0) {
             overlayVisible = true

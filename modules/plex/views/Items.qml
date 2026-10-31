@@ -18,30 +18,137 @@ FocusScope {
     property string ratingKey: navParams.ratingKey || ""
     property string categoryKey: navParams.categoryKey || ""
     property string libraryName: navParams.libraryName || ""
+    // Folder browsing: the key of the folder being listed (empty at a section's
+    // top level) and the trail of folder names walked to reach it. The trail is
+    // appended to the library name in the header, so a deep folder says where it
+    // is — the leaf on its own is ambiguous, since the "Season 1" folders of two
+    // different shows would give identical headers.
+    property string folderKey: navParams.folderKey || ""
+    property string folderTrail: navParams.folderTrail || ""
 
     property var items: []
     property bool isLoading: false
     property string errorMessage: ""
 
+    // A folder listing only earns the panel when it agrees with the rows it
+    // points into — see letterNavUsable, which sets this as the listing loads.
+    // library_all is always server-sorted, so it needs no such test.
+    property bool folderLetterNav: false
     property bool showLetterNav: listType === "library_all"
+                                 || (listType === "folders" && folderLetterNav)
     property bool letterNavActive: false
     property var letterIndex: []
 
-    function sortKey(title) {
-        var t = (title || "").toLowerCase()
-        var articles = ["the ", "a ", "an "]
-        for (var i = 0; i < articles.length; i++) {
-            if (t.indexOf(articles[i]) === 0) { t = t.substring(articles[i].length); break }
-        }
-        var ch = t.charAt(0).toUpperCase()
+    // ----------------------------------------------------------------
+    // PLAY ALL / SHUFFLE rows — curated sets can be played as a queue.
+    // They are prepended as virtual rows rather than mixed into `items`, so
+    // `items` stays exactly what the backend sent and every index into it has to
+    // go through actionRows.length. `rows` is what the ListView actually shows.
+    // ----------------------------------------------------------------
+    property bool canQueue: listType === "playlist_items" || listType === "collection_items"
+    // Passed to the backend as-is: seasons were flattened when the list loaded,
+    // so a row is either a leaf or a show, and expand_queue fans the shows out
+    // into their episodes. The ordering (and any shuffle) happens after that
+    // expansion, in QueuePlay.qml — shuffling here would randomize shows, not
+    // episodes.
+    property var queueItems: canQueue
+        ? items.filter(function(i) { return i && i.ratingKey })
+        : []
+    // The write row rides on the same warrant as the play rows, so the three stay
+    // one block: a set worth playing as a queue is a set worth putting on a card.
+    property var actionRows: !queueRowsWarranted(queueItems) ? []
+        : [{ __action: "play_all", title: "» PLAY ALL" },
+           { __action: "shuffle",  title: "~ SHUFFLE"  }]
+          .concat(cardWriter.available
+                  ? [{ __action: "write_card", title: "@ WRITE NFC CARD" }] : [])
+    property var rows: actionRows.concat(items)
+
+    // One show is already a queue — all of its episodes — so it earns the rows on
+    // its own, where a lone movie does not.
+    function queueRowsWarranted(candidates) {
+        if (candidates.length > 1) return true
+        return candidates.length === 1 && candidates[0].type === "show"
+    }
+
+    // Number of leading action rows for a given backend result. Used by the
+    // restore clamps, which run while `items` is mid-assignment and so cannot
+    // read the actionRows binding.
+    function actionRowCountFor(loadedItems) {
+        if (!canQueue) return 0
+        var candidates = loadedItems.filter(function(i) { return i && i.ratingKey })
+        if (!queueRowsWarranted(candidates)) return 0
+        return cardWriter.available ? 3 : 2
+    }
+
+    // First character as a bucket label; everything non-alphabetic shares '#'.
+    function bucket(text) {
+        var ch = text.charAt(0).toUpperCase()
         return (ch >= 'A' && ch <= 'Z') ? ch : '#'
+    }
+
+    // '#' sorts ahead of the letters, matching the panel's own ordering.
+    function bucketRank(key) {
+        return key === '#' ? 0 : key.charCodeAt(0)
+    }
+
+    // Buckets by the server's sort title when one is set (Plex sorts the list by
+    // titleSort), otherwise falls back to article-stripping the display title —
+    // which is what Plex itself does for items without a custom sort title.
+    //
+    // Folder listings are the exception: there a row *is* the name on disk, so it
+    // buckets on the literal first character. Article-stripping is metadata logic,
+    // and it makes the panel disagree with what is on screen — a library filed
+    // into letter folders keeps "An Inconvenient Truth" in A/ on disk, but
+    // stripping the article would bucket it under I.
+    function sortKey(item) {
+        if (listType === "folders") return bucket((item && item.title) || "")
+        var sortTitle = (item && item.titleSort) || ""
+        var t = (sortTitle || (item && item.title) || "").toLowerCase()
+        if (!sortTitle) {
+            var articles = ["the ", "a ", "an "]
+            for (var i = 0; i < articles.length; i++) {
+                if (t.indexOf(articles[i]) === 0) { t = t.substring(articles[i].length); break }
+            }
+        }
+        return bucket(t)
+    }
+
+    // The panel is only useful when it agrees with the list it jumps into: the
+    // rows have to already be in bucket order, and there has to be more than one
+    // bucket to jump between. Plex returns a folder's subfolders ahead of its
+    // loose files, each group sorted on its own, so a folder holding both
+    // restarts the alphabet — A B C A B C — and a letter present in both groups
+    // could only ever reach the folder. Testing the whole listing catches that
+    // along with any other ordering surprise, and it also drops the panel for a
+    // single-bucket folder, where every row shares one letter anyway.
+    function letterNavUsable(itemArr) {
+        if (itemArr.length === 0) return false
+        var distinct = 1
+        var prev = sortKey(itemArr[0])
+        for (var i = 1; i < itemArr.length; i++) {
+            var key = sortKey(itemArr[i])
+            if (bucketRank(key) < bucketRank(prev)) return false
+            if (key !== prev) distinct++
+            prev = key
+        }
+        return distinct > 1
+    }
+
+    // Highlights the letter matching the currently selected item.
+    function syncLetterToItem() {
+        if (letterIndex.length === 0) return
+        var curLetter = sortKey(items[itemList.currentIndex - actionRows.length])
+        for (var i = 0; i < letterIndex.length; i++) {
+            if (letterIndex[i].letter === curLetter) { letterList.currentIndex = i; break }
+        }
+        letterList.positionViewAtIndex(letterList.currentIndex, ListView.Contain)
     }
 
     function buildLetterIndex(itemArr) {
         var seen = {}
         var result = []
         for (var i = 0; i < itemArr.length; i++) {
-            var letter = sortKey(itemArr[i].title || "")
+            var letter = sortKey(itemArr[i])
             if (!seen[letter]) {
                 seen[letter] = true
                 result.push({ letter: letter, firstIndex: i })
@@ -71,8 +178,11 @@ FocusScope {
                 if (itemListRoot.showLetterNav)
                     itemListRoot.letterIndex = itemListRoot.buildLetterIndex(loadedItems)
                 if (loadedItems.length > 0) {
+                    // The saved index is a *row* index, so the clamp has to account
+                    // for the PLAY ALL / SHUFFLE rows this list may have prepended.
+                    var rowCount = loadedItems.length + itemListRoot.actionRowCountFor(loadedItems)
                     var restore = (navListState.currentIndex !== undefined) ? navListState.currentIndex : 0
-                    itemList.currentIndex = Math.min(restore, loadedItems.length - 1)
+                    itemList.currentIndex = Math.min(restore, rowCount - 1)
                     itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
                 }
             }
@@ -130,6 +240,21 @@ FocusScope {
             }
         }
 
+        function onFolderLoaded(loadedItems) {
+            if (itemListRoot.listType === "folders") {
+                itemListRoot.isLoading = false
+                itemListRoot.items = loadedItems
+                itemListRoot.folderLetterNav = itemListRoot.letterNavUsable(loadedItems)
+                itemListRoot.letterIndex = itemListRoot.folderLetterNav
+                    ? itemListRoot.buildLetterIndex(loadedItems) : []
+                if (loadedItems.length > 0) {
+                    var restore = (navListState.currentIndex !== undefined) ? navListState.currentIndex : 0
+                    itemList.currentIndex = Math.min(restore, loadedItems.length - 1)
+                    itemList.positionViewAtIndex(itemList.currentIndex, ListView.Contain)
+                }
+            }
+        }
+
         function onCategoriesLoaded(loadedItems) {
             if (itemListRoot.listType === "categories") {
                 itemListRoot.isLoading = false
@@ -156,8 +281,37 @@ FocusScope {
     // ----------------------------------------------------------------
 
     function selectItem() {
-        var item = items[itemList.currentIndex]
+        var item = rows[itemList.currentIndex]
         if (!item) return
+
+        // Virtual rows — act on the whole set instead of drilling into one item.
+        if (item.__action === "write_card") {
+            cardWriter.open()
+            return
+        }
+        if (item.__action) {
+            itemListRoot.navigateTo("QueuePlay.qml", {
+                queueItems: queueItems,
+                shuffle: item.__action === "shuffle",
+                title: listTitle,
+                libraryName: libraryName
+            }, { currentIndex: itemList.currentIndex })
+            return
+        }
+
+        // A folder row opens the next level down. The server's own key is passed
+        // back untouched, so the section id only matters at the top level.
+        if (item.type === "folder") {
+            itemListRoot.navigateTo("Items.qml", {
+                listType: "folders",
+                title: item.title,
+                sectionId: sectionId,
+                folderKey: item.folderKey,
+                folderTrail: (folderTrail !== "" ? folderTrail + " / " : "") + item.title,
+                libraryName: libraryName
+            }, { currentIndex: itemList.currentIndex })
+            return
+        }
 
         // Intermediate lists that navigate deeper
         if (listType === "hubs") {
@@ -260,6 +414,8 @@ FocusScope {
             plexBackend.load_categories(sectionId)
         else if (listType === "category_items")
             plexBackend.load_category_items(sectionId, categoryKey)
+        else if (listType === "folders")
+            plexBackend.load_folder(sectionId, folderKey)
         else if (listType === "continue_watching")
             plexBackend.load_continue_watching()
     }
@@ -280,7 +436,7 @@ FocusScope {
     AppBar {
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: libraryName
+        subtitle: folderTrail !== "" ? libraryName + " / " + folderTrail : libraryName
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125 //60
@@ -318,7 +474,7 @@ FocusScope {
     // Body
     ListView {
         id: itemList
-        model: items
+        model: rows
         opacity: letterNavActive ? 0.3 : 1
         anchors.top: parent.top
         anchors.left: parent.left
@@ -329,18 +485,39 @@ FocusScope {
         clip: true
         focus: true
 
-        Keys.onUpPressed: if (currentIndex > 0) currentIndex--
-        Keys.onDownPressed: if (currentIndex < count - 1) currentIndex++
+        Keys.onUpPressed: {
+            if (count === 0) return
+            if (currentIndex > 0) {
+                currentIndex--
+                itemListRoot.syncLetterToItem()
+            }
+            else {
+                currentIndex = count - 1
+                itemList.positionViewAtIndex(currentIndex, ListView.Contain)
+                letterList.currentIndex = letterIndex.length - 1
+                letterList.positionViewAtIndex(letterList.currentIndex, ListView.Contain)
+            }
+        }
+        Keys.onDownPressed: {
+            if (count === 0) return
+            if (currentIndex < count - 1) {
+                currentIndex++
+                itemListRoot.syncLetterToItem()
+            }
+            else {
+                currentIndex = 0
+                itemList.positionViewAtIndex(currentIndex, ListView.Contain)
+                letterList.currentIndex = 0
+                letterList.positionViewAtIndex(letterList.currentIndex, ListView.Contain)
+            }
+        }
         Keys.onReturnPressed: itemListRoot.selectItem()
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape || event.key === Qt.Key_Backspace || event.key === Qt.Key_Back) {
                 itemListRoot.goBack()
                 event.accepted = true
             } else if (event.key === Qt.Key_Right && showLetterNav && letterIndex.length > 0) {
-                var curLetter = sortKey((items[itemList.currentIndex] && items[itemList.currentIndex].title) || "")
-                for (var i = 0; i < letterIndex.length; i++) {
-                    if (letterIndex[i].letter === curLetter) { letterList.currentIndex = i; break }
-                }
+                itemListRoot.syncLetterToItem()
                 letterNavActive = true
                 letterList.forceActiveFocus()
                 event.accepted = true
@@ -366,9 +543,14 @@ FocusScope {
                 Text {
                     id: rowText
                     text: {
-                        var base = (modelData.type === "episode" && modelData.grandparentTitle)
-                                   ? (modelData.grandparentTitle + ": " + (modelData.title || ""))
-                                   : (modelData.title || "")
+                        if (modelData.type === "folder") return (modelData.title || "") + "/"
+                        if (modelData.type === "episode" && modelData.grandparentTitle) {
+                            var sNum = (modelData.parentIndex != null) ? modelData.parentIndex : "?"
+                            var eNum = (modelData.index != null) ? modelData.index : "?"
+                            return modelData.grandparentTitle + " S" + sNum + "E" + eNum
+                                   + ": " + (modelData.title || "")
+                        }
+                        var base = modelData.title || ""
                         return modelData.editionTitle ? base + " (" + modelData.editionTitle + ")" : base
                     }
                     color: (itemList.currentIndex === index && !letterNavActive)
@@ -417,18 +599,28 @@ FocusScope {
         focus: false
 
         Keys.onUpPressed: {
+            if (count === 0) return
             if (currentIndex > 0) {
                 currentIndex--
-                itemList.currentIndex = letterIndex[currentIndex].firstIndex
-                itemList.positionViewAtIndex(itemList.currentIndex, ListView.Beginning)
             }
+            else {
+                currentIndex = count - 1
+                letterList.positionViewAtIndex(letterList.currentIndex, ListView.Beginning)
+            }
+            itemList.currentIndex = letterIndex[currentIndex].firstIndex
+            itemList.positionViewAtIndex(itemList.currentIndex, ListView.Beginning)
         }
         Keys.onDownPressed: {
+            if (count === 0) return
             if (currentIndex < count - 1) {
                 currentIndex++
-                itemList.currentIndex = letterIndex[currentIndex].firstIndex
-                itemList.positionViewAtIndex(itemList.currentIndex, ListView.Beginning)
             }
+            else {
+                currentIndex = 0
+                letterList.positionViewAtIndex(letterList.currentIndex, ListView.Beginning)
+            }
+            itemList.currentIndex = letterIndex[currentIndex].firstIndex
+            itemList.positionViewAtIndex(itemList.currentIndex, ListView.Beginning)
         }
         Keys.onReturnPressed: {
             letterNavActive = false
@@ -485,5 +677,30 @@ FocusScope {
         anchors.bottomMargin: root.sh * 0.1041667 //50
         anchors.leftMargin: root.sw * 0.125 //80
         font.pixelSize: root.sh * 0.0333333 //16
+    }
+
+    // Writes a card for the whole set. The ref carries the collection's or
+    // playlist's ratingKey — these are server-local, user-created objects with no
+    // metadata-agent guid to be portable with — and the rows behind it are
+    // resolved when the card is tapped, so the card follows the set.
+    //
+    // The kind suffix keeps a card file readable on disk, the way the year does
+    // for a movie: "80s Action (Collection).txt" reads apart from the movie of
+    // the same name.
+    NfcCardWriter {
+        id: cardWriter
+        anchors.fill: parent
+        offerShuffle: true
+        // A set of movies has no episodes to sequence, so the show/season wording
+        // would read wrong here.
+        orderedLabel: "In Order"
+        shuffleLabel: "Shuffled"
+        cardRef: (itemListRoot.canQueue && itemListRoot.ratingKey !== "")
+                 ? "plex://" + (itemListRoot.listType === "collection_items" ? "collection" : "playlist")
+                   + "/" + itemListRoot.ratingKey
+                 : ""
+        cardTitle: itemListRoot.listTitle
+                   + (itemListRoot.listType === "collection_items" ? " (Collection)" : " (Playlist)")
+        onClosed: itemList.forceActiveFocus()
     }
 }

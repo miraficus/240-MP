@@ -8,6 +8,10 @@ set(CMAKE_AUTOMOC ON)
 # Strip qDebug(...) calls in Release builds to reduce CPU/disk noise on Pi
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DQT_NO_DEBUG_OUTPUT")
 
+# Release version string. CI passes the git tag (-DAPP_VERSION=vX.Y.Z); local
+# builds report "dev", which disables the in-app self-update download path.
+set(APP_VERSION "dev" CACHE STRING "Release version (CI passes the git tag)")
+
 include(GNUInstallDirs)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Network Svg)
@@ -21,6 +25,23 @@ if(NOT APPLE)
     pkg_check_modules(Libdrm REQUIRED libdrm)
 endif()
 
+# PC/SC for the NFC reader module. Optional: the module's other driver talks to
+# a PN532 over USB serial through plain termios, so readers still work without
+# it — which is what makes the NFC module usable on immutable distros where
+# pcscd cannot be installed. macOS ships PCSC.framework with the OS; Linux needs
+# libpcsclite-dev.
+if(APPLE)
+    find_library(PCSC_LIBRARIES PCSC)
+    if(PCSC_LIBRARIES)
+        set(PCSC_FOUND TRUE)
+    endif()
+else()
+    pkg_check_modules(PCSC IMPORTED_TARGET libpcsclite)
+endif()
+if(NOT PCSC_FOUND)
+    message(STATUS "PC/SC not found — NFC reader module will build with PN532 USB serial support only")
+endif()
+
 if(APPLE)
     enable_language(OBJCXX)
 endif()
@@ -31,14 +52,30 @@ add_executable(240mp
     src/modules/local_files/LocalFilesBackend.cpp
     src/modules/plex/PlexBackend.cpp
     src/modules/jellyfin/JellyfinBackend.cpp
+    src/modules/emby/EmbyBackend.cpp
     src/modules/ambient_mode/AmbientModeBackend.cpp
     src/modules/youtube/YouTubeBackend.cpp
     src/modules/iptv/IptvBackend.cpp
+    src/modules/nfc_reader/NfcReaderBackend.cpp
+    src/modules/nfc_reader/PcscDriver.cpp
+    src/modules/nfc_reader/Pn532SerialDriver.cpp
+    src/modules/nfc_reader/SerialPort.cpp
+    src/modules/weather/WeatherBackend.cpp
+    src/modules/scripts/ScriptsBackend.cpp
+    src/modules/scripts/ScriptLauncher.cpp
     src/player/MpvController.cpp
+    src/util/YtDlpLocator.cpp
+    src/util/MpvLocator.cpp
+    src/util/ExecPath.cpp
+    src/util/DisplayHandoff.cpp
+    src/util/FontconfigOverride.cpp
     src/input/InputManager.cpp
     src/input/IdleTracker.cpp
-    $<$<BOOL:${APPLE}>:src/macos_utils.mm>
+    src/update/UpdateManager.cpp
+    $<$<BOOL:${APPLE}>:src/util/MacosUtils.mm>
 )
+
+target_compile_definitions(240mp PRIVATE APP_VERSION="${APP_VERSION}")
 
 target_link_libraries(240mp PRIVATE
     Qt6::Core
@@ -56,6 +93,15 @@ if(APPLE)
     target_link_libraries(240mp PRIVATE "-framework AppKit")
 endif()
 
+if(PCSC_FOUND)
+    target_compile_definitions(240mp PRIVATE MP240_NFC_PCSC_AVAILABLE=1)
+    if(APPLE)
+        target_link_libraries(240mp PRIVATE ${PCSC_LIBRARIES})
+    else()
+        target_link_libraries(240mp PRIVATE PkgConfig::PCSC)
+    endif()
+endif()
+
 if(NOT APPLE)
     target_include_directories(240mp PRIVATE ${Libdrm_INCLUDE_DIRS})
 endif()
@@ -71,7 +117,7 @@ set_target_properties(240mp PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.240mp.app"
-    MACOSX_BUNDLE_ICON_FILE "assets/images/240-mp"
+    MACOSX_BUNDLE_ICON_FILE "packaging/macos/240-mp"
     INSTALL_RPATH_USE_LINK_PATH TRUE
 )
 
@@ -108,6 +154,14 @@ if(APPLE)
         "${CMAKE_SOURCE_DIR}/assets"
         "${CMAKE_SOURCE_DIR}/scripts"
         DESTINATION "240mp.app/Contents/Resources"
+        COMPONENT Runtime)
+
+    # Icon lives under packaging/macos (not assets/) so it ships alongside the
+    # other macOS packaging inputs; installed at the same relative path so it
+    # keeps matching MACOSX_BUNDLE_ICON_FILE above.
+    install(DIRECTORY
+        "${CMAKE_SOURCE_DIR}/packaging/macos"
+        DESTINATION "240mp.app/Contents/Resources/packaging"
         COMPONENT Runtime)
 
     # macdeployqt is NOT run here — it requires Qt frameworks to be present and

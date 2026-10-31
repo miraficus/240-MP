@@ -2,7 +2,7 @@
 -- background when the video has been paused longer than the configured timeout.
 --
 -- Loaded by --script= only when screensaver_timeout != "OFF".
--- Uses the same ASS-overlay technique as media-keys.lua's volume bar.
+-- Uses the same ASS-overlay technique as mpv-media-keys.lua's volume bar.
 -- Dismiss keys are consumed, matching the app-shell overlay: the first press
 -- only wakes the screen saver, the next press acts normally.
 
@@ -84,11 +84,19 @@ local function draw_frame(w, h, tx, ty)
 end
 
 -- ─── key bindings ─────────────────────────────────────────────────────────────
+-- Any key a user would press while interacting with mpv playback should wake
+-- the screen saver, matching the menu-side overlay's "any key dismisses"
+-- behavior (Main.qml). Includes both navigation keys and the HID media-key
+-- names mpv-media-keys.lua binds (PLAYPAUSE etc.) — otherwise e.g. a hardware
+-- Play press falls straight through to mpv-media-keys.lua and resumes playback
+-- behind the still-active screen saver.
 local DISMISS_KEYS = {
     "SPACE", "ENTER", "KP_ENTER", "ESC",
     "LEFT", "RIGHT", "UP", "DOWN", "PGUP", "PGDWN",
     "HOME", "END",
     "MBTN_LEFT", "MBTN_RIGHT",
+    "PLAYPAUSE", "STOP", "FORWARD", "REWIND", "NEXT", "PREV",
+    "VOLUME_UP", "VOLUME_DOWN", "MUTE",
 }
 
 activate = function()
