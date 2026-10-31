@@ -8,6 +8,8 @@ FocusScope {
     property var navParams: ({})
     property var navListState: navParams.navListState || ({})
     property var channelModel: []
+    property bool loading: true
+    property string errorMessage: ""
 
     signal navigateTo(string path, var params, var listState)
     signal goBack()
@@ -25,7 +27,7 @@ FocusScope {
         id: appBar
         iconSource: moduleRoot.moduleIcon
         title: moduleRoot.moduleName
-        subtitle: channelModel.length > 0 ? "Channels: " + channelModel.length : "Loading..."
+        subtitle: channelModel.length > 0 ? "Channels: " + channelModel.length : (loading ? "Loading..." : "Channels: 0")
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: root.sh * 0.125
@@ -38,7 +40,7 @@ FocusScope {
         spacing: root.sh * 0.0333333
         visible: itemList.count === 0
         Text {
-            text: "No channels found"
+            text: errorMessage || (loading ? "Loading channels..." : "No channels found")
             color: root.secondaryColor
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase
@@ -121,7 +123,12 @@ FocusScope {
 
     Connections {
         target: iptvBackend
+        function onErrorOccurred(message) {
+            itemsRoot.loading = false
+            itemsRoot.errorMessage = message
+        }
         function onChannelsLoaded(channels) {
+            itemsRoot.loading = false
             itemsRoot.channelModel = channels
             itemList.model = channels
             var restore = navListState.currentIndex !== undefined ? navListState.currentIndex : 0
@@ -138,11 +145,10 @@ FocusScope {
         
         if (lang === "CUSTOM") {
             var customUrl = appCore.get_setting("com.240mp.iptv", "custom_url") || ""
-            console.log("IPTV DEBUG - Custom URL is:", customUrl)
             
-            if (customUrl === "") {
+            if (customUrl.trim() === "") {
                 console.log("IPTV DEBUG - Redirecting to Link.qml due to empty custom URL")
-                itemsRoot.navigateTo("Link.qml", {}, {})
+                Qt.callLater(function() { itemsRoot.navigateTo("Link.qml", {}, {}) })
                 return
             }
             iptvBackend.fetchChannels(customUrl)

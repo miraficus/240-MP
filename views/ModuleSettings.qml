@@ -225,6 +225,10 @@ FocusScope {
                     settingKey: item.key,
                     settingLabel: item.label
                 }, { currentIndex: settingsList.currentIndex })
+            } else if (item.type === "text" && item.editor_qml) {
+                moduleSettingsRoot.navigateTo(item.editor_qml, {
+                    settingsEditor: true
+                }, { currentIndex: settingsList.currentIndex })
             } else if (item.type === "action") {
                 appCore.invoke_module_action(moduleSettingsRoot.moduleId, item.action_slot)
             } else if (item.type === "directory_browser") {

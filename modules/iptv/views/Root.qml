@@ -7,8 +7,9 @@ FocusScope {
 
     property var navParams: ({})
 
-    // must match your manifest id
-    property var _moduleInfo: appCore ? appCore.get_module_info("com.240mp.iptv") : ({})
+    property string moduleId: "com.240mp.iptv"
+
+    property var _moduleInfo: appCore ? appCore.get_module_info(moduleId) : ({})
     property string moduleName: _moduleInfo.name || ""
     property string moduleIcon: _moduleInfo.icon || ""
 
@@ -16,16 +17,16 @@ FocusScope {
     property var currentParams: ({})
 
     function navigateTo(viewPath, params, fromState) {
-        var resolved = moduleRoot.Component.status === Component.Ready ? Qt.resolvedUrl(viewPath) : viewPath
-        if (typeof resolved === "string" && !resolved.startsWith("file://") && !resolved.startsWith("qrc:/")) {
-            resolved = Qt.resolvedUrl("./" + viewPath)
-        }
-
-        console.log("IPTV ROUTER - Attempting to load resolved path:", resolved)
-
+        var resolved = Qt.resolvedUrl(viewPath)
         navStack.push({ source: internalLoader.source, params: currentParams, listState: fromState || {} })
         currentParams = params || {}
         internalLoader.setSource(resolved, { "navParams": params || {} })
+    }
+
+    function replaceWith(viewPath, params) {
+        navStack = []
+        currentParams = params || {}
+        internalLoader.setSource(Qt.resolvedUrl(viewPath), { "navParams": currentParams })
     }
 
     function navigateBack() {
@@ -57,9 +58,14 @@ FocusScope {
                 console.log("IPTV ROUTER - Received navigateTo signal for path:", path)
                 moduleRoot.navigateTo(path, params, listState) 
             }
+            function onReplaceWith(path, params) { moduleRoot.replaceWith(path, params) }
             function onGoBack() { moduleRoot.navigateBack() }
         }
     }
 
-    Component.onCompleted: navigateTo("Items.qml", {})
+    Component.onCompleted: {
+        var custom = appCore.get_setting(moduleId, "playlist_lang") === "CUSTOM"
+        var url = appCore.get_setting(moduleId, "custom_url") || ""
+        replaceWith(custom && url.trim() === "" ? "Link.qml" : "Items.qml", {})
+    }
 }

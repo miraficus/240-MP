@@ -335,6 +335,17 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
+      - name: Test IPTV URL settings and playlists
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+          QML_XHR_ALLOW_FILE_READ: '1'
+        run: |
+          cmake -S tests/iptv -B build-iptv-tests -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}"
+          cmake --build build-iptv-tests --parallel
+          ./build-iptv-tests/iptv_backend_test
+          ./build-iptv-tests/iptv_navigation_test -input tests/iptv -import views
+
       # Preserve the unstripped executable before linuxdeploy strips AppDir.
       - name: Upload executable with debug symbols
         uses: actions/upload-artifact@v4.6.2

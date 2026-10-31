@@ -23,21 +23,29 @@ void IptvBackend::fetchChannels(const QString &langCode) {
     QString cleanLang = langCode.trimmed().toUpper();
     QString targetUrl = "https://iptv-org.github.io/iptv/index.m3u"; // Default ALL
 
-    if (cleanLang == "CUSTOM") {
-        if (cleanLang.startsWith("HTTP://") || cleanLang.startsWith("HTTPS://")) {
-            targetUrl = langCode;
+    if (cleanLang.startsWith("HTTP://") || cleanLang.startsWith("HTTPS://")) {
+        const QUrl customUrl(langCode.trimmed());
+        if (!customUrl.isValid() || customUrl.host().isEmpty()) {
+            emit errorOccurred("Invalid playlist URL");
+            return;
         }
+        targetUrl = customUrl.toString();
     } else if (cleanLang == "CZ") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/ces.m3u";
     } else if (cleanLang == "DE") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/deu.m3u";
     } else if (cleanLang == "EN") {
         targetUrl = "https://iptv-org.github.io/iptv/languages/eng.m3u";
+    } else if (cleanLang != "ALL") {
+        emit errorOccurred("Choose a playlist language or enter a custom HTTP/HTTPS URL");
+        return;
     }
 
-    qDebug() << "IPTV BACKEND - Fetching from URL:" << targetUrl;
+    // Do not log custom URLs: query strings may contain access credentials.
+    qDebug() << "IPTV BACKEND - Fetching playlist";
 
     QNetworkRequest request((QUrl(targetUrl)));
+    request.setTransferTimeout(30000);
     request.setHeader(QNetworkRequest::UserAgentHeader, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
 
     QNetworkReply *reply = m_networkManager->get(request);

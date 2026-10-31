@@ -1,117 +1,110 @@
 import QtQuick
-import QtQuick.Controls
 import Components
 
 FocusScope {
     id: linkRoot
-    anchors.fill: parent
     focus: true
 
     property var navParams: ({})
-    signal navigateTo(string path, var params, var listState)
+    property string customUrl: appCore.get_setting("com.240mp.iptv", "custom_url") || ""
+    property string errorMsg: ""
+    property var moduleInfo: appCore.get_module_info("com.240mp.iptv")
+
+    signal replaceWith(string path, var params)
     signal goBack()
 
-    property string customUrl: appCore ? (appCore.get_setting("com.240mp.iptv", "custom_url") || "") : ""
-    property string errorMsg: ""
-
-    Component.onCompleted: {
-        serverInput.forceActiveFocus()
-    }
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape || event.key === Qt.Key_Backspace || event.key === Qt.Key_Back) {
-            goBack()
-            event.accepted = true
-            return
-        }
-    }
-
     function submit() {
-        var trimmedUrl = customUrl.trim()
-        if (trimmedUrl === "" || (!trimmedUrl.toLowerCase().startsWith("http://") && !trimmedUrl.toLowerCase().startsWith("https://"))) {
-            errorMsg = "PLEASE ENTER A VALID HTTP/HTTPS URL"
+        var url = serverInput.text.trim()
+        if (!/^https?:\/\/[^\s\/?#]+(?:[\/?#][^\s]*)?$/i.test(url)) {
+            errorMsg = "Please enter a valid HTTP/HTTPS playlist URL"
             return
         }
         errorMsg = ""
-        
-        if (appCore) {
-            appCore.save_setting("com.240mp.iptv", "custom_url", trimmedUrl)
-            appCore.save_setting("com.240mp.iptv", "playlist_lang", "CUSTOM")
-        }
-        
-        goBack()
+        appCore.save_setting("com.240mp.iptv", "custom_url", url)
+        appCore.save_setting("com.240mp.iptv", "playlist_lang", "CUSTOM")
+        if (navParams.settingsEditor)
+            goBack()
+        else
+            replaceWith("Items.qml", {})
     }
 
-    // Header matching Items.qml structure
+    Component.onCompleted: serverInput.forceActiveFocus()
+
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
+            goBack()
+            event.accepted = true
+        }
+    }
+
     AppBar {
-        id: appBar
-        iconSource: _moduleInfo ? _moduleInfo.icon : ""
-        title: _moduleInfo ? _moduleInfo.name : "IPTV"
-        subtitle: "Custom M3U Playlist URL"
+        iconSource: linkRoot.moduleInfo.icon || ""
+        title: "IPTV"
+        subtitle: "Custom playlist URL"
         anchors.top: parent.top
         anchors.left: parent.left
-        anchors.topMargin: parent.height * 0.125
-        anchors.leftMargin: parent.width * 0.125
+        anchors.topMargin: root.sh * 0.125
+        anchors.leftMargin: root.sw * 0.125
     }
 
     Column {
         anchors.centerIn: parent
-        spacing: parent.height * 0.033
+        width: root.sw * 0.75
+        spacing: root.sh * 0.025
 
-        Column {
-            spacing: parent.height * 0.016
-            width: 400
+        Text {
+            text: "Enter M3U / M3U8 playlist URL:"
+            color: root.secondaryColor
+            font.family: root.globalFont
+            font.capitalization: Font.AllUppercase
+            font.pixelSize: root.sh * 0.0333333
+        }
 
-            Text {
-                text: "ENTER PLAYLIST URL:"
-                color: "#FFFFFF"
-                font.pixelSize: 16
-            }
+        Rectangle {
+            width: parent.width
+            height: root.sh * 0.0833333
+            color: root.surfaceColor
+            border.color: root.accentColor
+            border.width: Math.max(1, root.sh * 0.0041667)
 
-            Rectangle {
-                width: parent.width
-                height: 40
-                color: "#222222"
-                border.color: "#FFFFFF"
-                border.width: 2
-
-                TextInput {
-                    id: serverInput
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    text: linkRoot.customUrl
-                    color: "#FFFFFF"
-                    font.pixelSize: 18
-                    clip: true
-                    focus: true
-                    
-                    onTextChanged: { linkRoot.customUrl = text }
-
-                    Keys.onReturnPressed: {
-                        linkRoot.submit()
-                    }
-                }
+            TextInput {
+                id: serverInput
+                objectName: "playlistUrlInput"
+                anchors.fill: parent
+                anchors.margins: root.sh * 0.0166667
+                text: linkRoot.customUrl
+                color: root.primaryColor
+                selectionColor: root.accentColor
+                selectedTextColor: root.surfaceColor
+                font.family: root.globalFont
+                font.pixelSize: root.sh * 0.0375
+                clip: true
+                selectByMouse: true
+                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                Keys.onReturnPressed: linkRoot.submit()
+                Keys.onEnterPressed: linkRoot.submit()
             }
         }
 
-        // Error message text block
         Text {
-            visible: errorMsg !== ""
-            text: errorMsg
-            color: "#FF0000"
-            font.pixelSize: 16
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width
+            text: linkRoot.errorMsg
+            visible: text !== ""
+            color: root.accentColor
+            font.family: root.globalFont
+            font.pixelSize: root.sh * 0.0333333
+            wrapMode: Text.Wrap
         }
     }
 
-    // Footer matching Items.qml structure
     Text {
-        text: "BACK: CANCEL / ENTER: SAVE & LOAD"
-        color: "#888888"
+        text: root.hints.back + ":CANCEL " + root.hints.select + ":SAVE"
+        color: root.tertiaryColor
+        font.family: root.globalFont
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        anchors.bottomMargin: parent.height * 0.1
-        anchors.leftMargin: parent.width * 0.125
-        font.pixelSize: 16
+        anchors.bottomMargin: root.sh * 0.1041667
+        anchors.leftMargin: root.sw * 0.125
+        font.pixelSize: root.sh * 0.0333333
     }
 }

@@ -22,7 +22,8 @@
       "key": "custom_url",
       "label": "Custom IPTV URL",
       "type": "text",
-      "default": ""
+      "default": "",
+      "editor_qml": "modules/iptv/views/Link.qml"
     }
   ]
 }
