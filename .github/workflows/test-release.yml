@@ -1,0 +1,288 @@
+name: Test Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Draft release tag (for example I18N-FT)'
+        required: true
+        type: string
+        default: I18N-FT
+      build_arm64:
+        description: 'Build Linux ARM64 for Raspberry Pi'
+        type: boolean
+        default: true
+      build_x86_64:
+        description: 'Build Linux x86_64 AppImage for PC'
+        type: boolean
+        default: true
+      build_type:
+        description: 'Application build type'
+        type: choice
+        default: RelWithDebInfo
+        options: [RelWithDebInfo, Debug, Release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-release-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+env:
+  BUILD_TYPE: ${{ inputs.build_type }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  prepare:
+    name: Validate draft release and source commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Validate tag and selected platforms
+        env:
+          ARM: ${{ inputs.build_arm64 }}
+          X86: ${{ inputs.build_x86_64 }}
+        run: |
+          test -n "$RELEASE_TAG"
+          git check-ref-format "refs/tags/$RELEASE_TAG"
+          if [ "$ARM" != true ] && [ "$X86" != true ]; then
+            echo 'Select at least one build platform.' >&2
+            exit 1
+          fi
+      - name: Check existing release and tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(github.rest.repos.listReleases, context.repo);
+            const release = releases.find(r => r.tag_name === tag);
+            if (release && !release.draft) {
+              throw new Error('This tag has a published release. Choose a new draft tag.');
+            }
+            let ref;
+            try {
+              ref = await github.rest.git.getRef({...context.repo, ref: 'tags/' + tag});
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (ref) {
+              let object = ref.data.object;
+              while (object.type === 'tag') {
+                object = (await github.rest.git.getTag({...context.repo, tag_sha: object.sha})).data.object;
+              }
+              if (object.type !== 'commit' || object.sha !== context.sha) {
+                throw new Error('The tag points to another commit. Run the workflow from that tag or choose a new draft tag.');
+              }
+            }
+            core.info('Building ' + context.ref + ' at ' + context.sha + ' for draft ' + tag);
+
+  build-linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-24.04-arm
+    needs: prepare
+    if: inputs.build_arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Install build dependencies
+        run: |
+          # The runner image ships Microsoft apt repos (azure-cli, prod) that
+          # intermittently serve broken signatures and fail `apt-get update`.
+          # This build doesn't need them, so drop them first.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qt6-tools-dev \
+            qt6-l10n-tools \
+            libqt6svg6 \
+            qt6-svg-dev \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-window \
+            libdrm-dev \
+            libssl-dev \
+            libsdl2-dev \
+            libpcsclite-dev
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/install/usr/local" \
+            -DAPP_VERSION="dev"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Install
+        run: cmake --install build
+
+      - name: Create tarball
+        run: |
+          cd "${GITHUB_WORKSPACE}/install"
+          tar -czf "${GITHUB_WORKSPACE}/240-MP-linux-arm64.tar.gz" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: tarball-linux-arm64
+          path: "240-MP-linux-arm64.tar.gz"
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Linux x86_64 — self-contained AppImage for SteamDeck / Intel-AMD desktops.
+  # Unlike the arm64 tarball (which relies on apt via install.sh), the AppImage
+  # bundles Qt, SDL2 and mpv so it runs on immutable distros like SteamOS.
+  # Built on ubuntu-24.04. apt's mpv is 0.37, one release short of the app's
+  # --subs-with-matching-audio=forced option (added in mpv 0.38), so we build
+  # mpv 0.40 from source against 24.04's stock FFmpeg 6.1 (see build-mpv.sh) —
+  # no PPA, no FFmpeg compile. Sets the glibc floor at 2.39 (2.35's savoury1
+  # path for a modern mpv is now gated behind a private PPA): covers a current
+  # Steam Deck and modern distros; older ones can't run it.
+  # ──────────────────────────────────────────────────────────────────────────────
+  build-linux-x86_64:
+    name: Linux x86_64 (AppImage)
+    runs-on: ubuntu-24.04
+    needs: prepare
+    if: inputs.build_x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Install build + bundling dependencies
+        run: |
+          # Drop the flaky Microsoft/azure apt repos (they intermittently serve
+          # broken signatures), then install: the app toolchain + non-Qt deps and
+          # the X11/GL/xkb libs the Qt plugins pull in at deploy time; plus the
+          # deps to build mpv from source (meson + the FFmpeg 6.1 -dev set,
+          # libass/libplacebo/lua/vaapi and the Wayland/X11/EGL/DRM dev libs).
+          # We build mpv (0.40) rather than apt's 0.37 — see scripts/build-mpv.sh.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libdrm-dev \
+            libssl-dev \
+            libsdl2-dev \
+            libpcsclite-dev \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            libxcb-cursor0 \
+            meson \
+            ninja-build \
+            pkg-config \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libass-dev \
+            libplacebo-dev \
+            liblua5.2-dev \
+            libva-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxpresent-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libva-wayland2 \
+            libvulkan1 \
+            libgbm-dev \
+            libegl-dev \
+            libpulse-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libjpeg-dev \
+            liblcms2-dev \
+            libuchardet-dev \
+            libzimg-dev
+
+      - name: Build mpv (0.40 from source — apt's 0.37 is too old)
+        run: |
+          echo "MPV_BIN=$(scripts/build-mpv.sh)" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" \
+            -DAPP_VERSION="dev"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Build AppImage
+        env:
+          # Extract-and-run the linuxdeploy/appimagetool AppImages instead of
+          # requiring FUSE on the runner.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+          VERSION: dev
+          # MPV_BIN was exported by the "Build mpv" step above.
+        run: scripts/build-appimage.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: appimage-linux-x86_64
+          # Version-less on purpose — the AppImage self-updates in place.
+          path: "240-MP-linux-x86_64.AppImage"
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────────
+  # Attach selected test builds to a draft
+  # ──────────────────────────────────────────────────────────────────────────────
+  upload-release:
+    name: Attach builds to draft release
+    needs: [prepare, build-linux-arm64, build-linux-x86_64]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.build-linux-arm64.result == 'success' || needs.build-linux-x86_64.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download selected build artifacts
+        uses: actions/download-artifact@v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate build information and checksums
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          cd artifacts
+          printf 'Source: %s\nCommit: %s\nBuild type: %s\nApp version: dev (automatic updates disabled)\n' "$SOURCE_REF" "$SOURCE_SHA" "$BUILD_TYPE" > BUILD-INFO.txt
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS
+      - name: Upload to draft
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          draft: true
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: artifacts/*
