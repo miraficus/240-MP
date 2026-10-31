@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - iptv
     tags:
       - 'v*.*.*'
 
@@ -22,11 +24,27 @@ on:
         required: true
         type: boolean
         default: true
+      build_type:
+        description: 'Build type (RelWithDebInfo enables logs and debug symbols)'
+        required: true
+        type: choice
+        default: RelWithDebInfo
+        options:
+          - RelWithDebInfo
+          - Debug
+          - Release
       create_release:
         description: 'Make GitHub Release?'
         required: true
         type: boolean
         default: false
+
+permissions:
+  contents: read
+
+env:
+  BUILD_TYPE: ${{ inputs.build_type || (startsWith(github.ref, 'refs/tags/') && 'Release' || 'RelWithDebInfo') }}
+  BUILD_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'dev' }}
 
 jobs:
 
@@ -40,7 +58,7 @@ jobs:
     # found"). Unpin only after bumping Qt to a release that supports the new
     # SDK (6.9.3+).
     runs-on: macos-15
-    if: ${{ github.event_name == 'push' || inputs.build_mac == true }}
+    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.build_mac == true }}
 
     steps:
       - name: Checkout
@@ -74,10 +92,10 @@ jobs:
       - name: Configure
         run: |
           cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR};${SDL2_PREFIX}" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/install" \
-            -DAPP_VERSION="${{ github.ref_name }}"
+            -DAPP_VERSION="${BUILD_VERSION}"
 
       - name: Build
         run: cmake --build build --parallel
@@ -201,9 +219,9 @@ jobs:
       - name: Configure
         run: |
           cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/install/usr/local" \
-            -DAPP_VERSION="${{ github.ref_name }}"
+            -DAPP_VERSION="${BUILD_VERSION}"
 
       - name: Build
         run: cmake --build build --parallel
@@ -214,7 +232,7 @@ jobs:
       - name: Create tarball
         run: |
           cd "${GITHUB_WORKSPACE}/install"
-          tar -czf "${GITHUB_WORKSPACE}/240-MP-${{ github.ref_name }}-linux-arm64.tar.gz" .
+          tar -czf "${GITHUB_WORKSPACE}/240-MP-${BUILD_VERSION}-linux-arm64.tar.gz" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4.6.2
@@ -310,12 +328,20 @@ jobs:
       - name: Configure
         run: |
           cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_PREFIX_PATH="${QT_ROOT_DIR}" \
-            -DAPP_VERSION="${{ github.ref_name }}"
+            -DAPP_VERSION="${BUILD_VERSION}"
 
       - name: Build
         run: cmake --build build --parallel
+
+      # Preserve the unstripped executable before linuxdeploy strips AppDir.
+      - name: Upload executable with debug symbols
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: debug-executable-linux-x86_64
+          path: build/240mp
+          if-no-files-found: error
 
       - name: Build AppImage
         env:
@@ -323,7 +349,7 @@ jobs:
           # requiring FUSE on the runner.
           APPIMAGE_EXTRACT_AND_RUN: '1'
           QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ env.BUILD_VERSION }}
           # MPV_BIN was exported by the "Build mpv" step above.
         run: scripts/build-appimage.sh
 
@@ -341,7 +367,7 @@ jobs:
   release:
     name: Publish Release
     needs: [build-macos-arm64, build-linux-arm64, build-linux-x86_64]
-    if: ${{ success() && (github.event_name == 'push' || inputs.create_release == true) }}
+    if: ${{ success() && startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || inputs.create_release == true) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
